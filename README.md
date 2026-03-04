@@ -1,6 +1,7 @@
 # 🦀 YooAI — OpenClaw Agent Dashboard
 
-A real-time visual dashboard for monitoring your OpenClaw AI agent. Watch its mood, soul animation, brain memory, and activity timeline live as it works. Perfect to monitor activity while the agent works, you see how hard it's working, how fustrated it is, visual active nureal memory triggers and saves and more. Easy setup. Standalone client. 
+A real-time visual dashboard for monitoring your OpenClaw AI agent. Watch its mood, soul animation, brain memory, and activity timeline live as it works.
+Perfect to monitor activity while the agent works, you see how hard it's working, how fustrated it is, visual active nureal memory triggers and saves and more. Easy setup. Standalone client. 
 
 [![D62919D7-72AE-436A-A822-8541AC69A585.png](https://i.postimg.cc/PfFD2KYc/D62919D7-72AE-436A-A822-8541AC69A585.png)](https://postimg.cc/3WmWwXLC)
 
