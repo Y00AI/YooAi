@@ -2,7 +2,7 @@
 
 A real-time visual dashboard for monitoring your OpenClaw AI agent. Watch its mood, soul animation, brain memory, and activity timeline live as it works.
 
-![YooAI Dashboard]([screenshot.png](https://imgur.com/a/DMfZaok))
+![YooAI Dashboard](https://i.imgur.com/DMfZaok.png)
 
 ---
 
