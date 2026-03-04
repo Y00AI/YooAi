@@ -16,7 +16,6 @@ A real-time visual dashboard for monitoring your OpenClaw AI agent. Watch its mo
 - [![B61D130F-F956-45D0-AA51-99AE6C46D773.png](https://i.postimg.cc/5NdChyKN/B61D130F-F956-45D0-AA51-99AE6C46D773.png)](https://postimg.cc/Th01mdXZ)
 - 🔮 **Brain Memory** — live neural network animation reacting to agent events
 - [![68605D6E-A654-4560-9EF4-D78EEFF709D8.png](https://i.postimg.cc/jSvnnXxn/68605D6E-A654-4560-9EF4-D78EEFF709D8.png)](https://postimg.cc/bZDwK12q)
-- 🎨 Glassmorphism UI — looks great on ultrawide
 - 🪙 Token counter
 - [![D8A3E724-2929-4229-8EE3-D991361B60C0.png](https://i.postimg.cc/tTnsfGhD/D8A3E724-2929-4229-8EE3-D991361B60C0.png)](https://postimg.cc/S2qQ251z)
 - 📊 Progress bar
