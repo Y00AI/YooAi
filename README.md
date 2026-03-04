@@ -8,11 +8,19 @@ A real-time visual dashboard for monitoring your OpenClaw AI agent. Watch its mo
 
 ## ✨ Features
 
-- 🧠 **Agent Mood** — live mood bars reacting to agent activity[![A66997F6-C9AD-4E2D-A943-440D3299BC3D.png](https://i.postimg.cc/T3vp4swQ/A66997F6-C9AD-4E2D-A943-440D3299BC3D.png)](https://postimg.cc/mtVLc87F)
+- 🧠 **Agent Mood** — live mood bars reacting to agent activity
+[![A66997F6-C9AD-4E2D-A943-440D3299BC3D.png](https://i.postimg.cc/T3vp4swQ/A66997F6-C9AD-4E2D-A943-440D3299BC3D.png)](https://postimg.cc/mtVLc87F)
 - 🌀 **Agent Soul** — animated particle visualizer with 7 mood states
+- [![26625DE4-428B-4AD4-8A5E-784ABE7927A7.png](https://i.postimg.cc/W4WZC7x3/26625DE4-428B-4AD4-8A5E-784ABE7927A7.png)](https://postimg.cc/2qW3BnkR)
 - ⚡ **Activity Timeline** — scrolling log of tasks, messages, tool calls and tokens
+- [![B61D130F-F956-45D0-AA51-99AE6C46D773.png](https://i.postimg.cc/5NdChyKN/B61D130F-F956-45D0-AA51-99AE6C46D773.png)](https://postimg.cc/Th01mdXZ)
 - 🔮 **Brain Memory** — live neural network animation reacting to agent events
+- [![68605D6E-A654-4560-9EF4-D78EEFF709D8.png](https://i.postimg.cc/jSvnnXxn/68605D6E-A654-4560-9EF4-D78EEFF709D8.png)](https://postimg.cc/bZDwK12q)
 - 🎨 Glassmorphism UI — looks great on ultrawide
+- 🪙 Token counter
+- [![D8A3E724-2929-4229-8EE3-D991361B60C0.png](https://i.postimg.cc/tTnsfGhD/D8A3E724-2929-4229-8EE3-D991361B60C0.png)](https://postimg.cc/S2qQ251z)
+- 📊 Progress bar
+- [![0132C6BD-DF67-405F-B54F-738D36366293.png](https://i.postimg.cc/1zfXn1Yy/0132C6BD-DF67-405F-B54F-738D36366293.png)](https://postimg.cc/8FgN99SY)
 
 ---
 
