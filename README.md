@@ -9,7 +9,7 @@ A real-time visual dashboard for monitoring your OpenClaw AI agent. Watch its mo
 ## ✨ Features
 
 - 🧠 **Agent Mood** — live mood bars reacting to agent activity
-- [![A66997F6-C9AD-4E2D-A943-440D3299BC3D.png](https://i.postimg.cc/T3vp4swQ/A66997F6-C9AD-4E2D-A943-440D3299BC3D.png)](https://postimg.cc/mtVLc87F)
+- ![A66997F6-C9AD-4E2D-A943-440D3299BC3D.png](https://i.postimg.cc/T3vp4swQ/A66997F6-C9AD-4E2D-A943-440D3299BC3D.png)](https://postimg.cc/mtVLc87F)
 - 🌀 **Agent Soul** — animated particle visualizer with 7 mood states
 - [![26625DE4-428B-4AD4-8A5E-784ABE7927A7.png](https://i.postimg.cc/W4WZC7x3/26625DE4-428B-4AD4-8A5E-784ABE7927A7.png)](https://postimg.cc/2qW3BnkR)
 - ⚡ **Activity Timeline** — scrolling log of tasks, messages, tool calls and tokens
