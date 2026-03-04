@@ -46,6 +46,7 @@ The dashboard will launch as a desktop window and auto-connect to your local Ope
 
 For newbies: Extract zip, right click inside the folder, open terminal, type "npm install" first, then "npm start" 
 to relaunch again, same process but skip the install and just "npm start" make sure the directory is the correct folder by opening terminal within the folder.
+Your gateway for openclaw must be active first. Find your gateway key in your config.json in openclaw, paste it in the config menu in YooAI. 
 
 ### Connect
 
