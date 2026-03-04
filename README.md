@@ -15,7 +15,7 @@ Perfect to monitor activity while the agent works, you see how hard it's working
 - [![26625DE4-428B-4AD4-8A5E-784ABE7927A7.png](https://i.postimg.cc/W4WZC7x3/26625DE4-428B-4AD4-8A5E-784ABE7927A7.png)](https://postimg.cc/2qW3BnkR)
 - ⚡ **Activity Timeline** — scrolling log of tasks, messages, tool calls and tokens
 - [![B61D130F-F956-45D0-AA51-99AE6C46D773.png](https://i.postimg.cc/5NdChyKN/B61D130F-F956-45D0-AA51-99AE6C46D773.png)](https://postimg.cc/Th01mdXZ)
-- 🔮 **Brain Memory** — live neural network animation reacting to agent events
+- 🔮 **Brain Memory** — live neural network animation reacting to agent events(Blue light is a recall, yellow active, pink new)with linking animation
 - [![68605D6E-A654-4560-9EF4-D78EEFF709D8.png](https://i.postimg.cc/jSvnnXxn/68605D6E-A654-4560-9EF4-D78EEFF709D8.png)](https://postimg.cc/bZDwK12q)
 - 🪙 Token counter
 - [![D8A3E724-2929-4229-8EE3-D991361B60C0.png](https://i.postimg.cc/tTnsfGhD/D8A3E724-2929-4229-8EE3-D991361B60C0.png)](https://postimg.cc/S2qQ251z)
