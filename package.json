@@ -1,0 +1,52 @@
+{
+  "name": "yooai",
+  "version": "1.0.0",
+  "description": "A cute local dashboard for OpenClaw agents",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "ws": "^8.14.2",
+    "chokidar": "^3.5.3"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.yooai.dashboard",
+    "productName": "YooAI",
+    "copyright": "YooAI",
+    "icon": "assets/icon",
+    "files": [
+      "electron/**/*",
+      "public/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": ["nsis"],
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "keywords": ["openclaw", "ai", "dashboard", "agent"],
+  "license": "MIT"
+}
