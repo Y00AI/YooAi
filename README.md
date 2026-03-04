@@ -42,8 +42,10 @@ npm install
 # Start
 npm start
 ```
-
 The dashboard will launch as a desktop window and auto-connect to your local OpenClaw gateway.
+
+For newbies: Extract zip, right click inside the folder, open terminal, type "npm install" first, then "npm start" 
+to relaunch again, same process but skip the install and just "npm start" make sure the directory is the correct folder by opening terminal within the folder.
 
 ### Connect
 
