@@ -68,3 +68,5 @@ Licensed under **CC BY-ND 4.0** — free to use and share with attribution, no m
 If you find this useful, consider buying me a coffee!
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?style=for-the-badge&logo=buy-me-a-coffee)](https://buymeacoffee.com/yooai)
+
+<a href="https://www.buymeacoffee.com/YooAI" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
