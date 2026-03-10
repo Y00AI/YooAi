@@ -62,7 +62,7 @@ const Chat = (function() {
   function updateConnectionStatus(isConnected) {
     const statusEl = document.getElementById('chatStatus');
     if (statusEl) {
-      statusEl.textContent = isConnected ? '已连接 ✓' : '未连接';
+      statusEl.textContent = isConnected ? '已连接' : '未连接';
       statusEl.style.color = isConnected ? '#a0ffc8' : '#f9a98e';
     }
   }
@@ -113,6 +113,9 @@ const Chat = (function() {
 
     console.log('[Chat] Sending message:', text.slice(0, 50) + '...');
 
+    // End any previous streaming message before starting new conversation
+    endStream();
+
     // Add user message to UI
     addMessage({
       role: 'user',
@@ -129,41 +132,83 @@ const Chat = (function() {
       console.error('[Chat] Gateway not connected!');
       addMessage({
         role: 'assistant',
-        content: '⚠️ 未连接到网关，请先在设置中配置并连接。',
+        content: '未连接到网关，请先在设置中配置并连接。',
         timestamp: Date.now()
       });
       return;
     }
 
-    // Send to gateway - using correct OpenClaw WebChat protocol
-    const requestId = 'chat-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    // Send to gateway - using OpenClaw WebChat protocol
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).slice(2, 8);
     const payload = {
       type: 'req',
-      id: requestId,
+      id: 'chat-' + timestamp + '-' + random,
       method: 'chat.send',
       params: {
-        message: text
+        sessionKey: 'main',
+        message: text,
+        idempotencyKey: 'idem-' + timestamp + '-' + random
       }
     };
 
     const sent = Gateway.send(payload);
-    console.log('[Chat] Message sent:', sent, 'requestId:', requestId, 'payload:', payload);
+    console.log('[Chat] Message sent:', sent, 'payload:', payload);
   }
 
   /**
    * Add a complete message
+   * Now includes date divider logic using ChatMessageUtils
    */
   function addMessage(msg) {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+
+    // Remove empty state if present
+    const empty = container.querySelector('.chat-empty');
+    if (empty) empty.remove();
+
+    // Check if date divider is needed
+    if (ChatMessageUtils.getDateDividerIfNeeded(messages, msg)) {
+      const divider = ChatMessageUtils.createDateDivider(msg.timestamp);
+      container.appendChild(divider);
+    }
+
+    // Add to messages array
     messages.push(msg);
-    renderMessage(msg);
+
+    // Render message using ChatNormalizer
+    const chatItem = ChatNormalizer.normalizeMessage(msg, messages.length - 1);
+    const msgEl = ChatNormalizer.renderItem(chatItem, {
+      markdownRenderer: markedLib ? markedLib.parse.bind(markedLib) : null,
+      sanitizeHtml: domPurifyLib ? domPurifyLib.sanitize.bind(domPurifyLib) : null
+    });
+
+    if (msgEl) {
+      container.appendChild(msgEl);
+      setupCodeBlockCopy(msgEl);
+    }
+
     scrollToBottom();
   }
 
   /**
    * Append content to streaming message
+   * Now uses ChatMessageUtils.showTypingIndicator()
    */
   function appendToStream(content) {
-    if (!currentStreamingMsg) {
+    // Hide typing indicator when content starts arriving
+    ChatMessageUtils.hideTypingIndicator();
+
+    // If no current streaming message, or previous one ended, create new
+    if (!currentStreamingMsg || !currentStreamingMsg.streaming) {
+      // End any previous stream properly
+      if (currentStreamingMsg) {
+        currentStreamingMsg.streaming = false;
+        const prevEl = document.querySelector('.message.streaming');
+        if (prevEl) prevEl.classList.remove('streaming');
+      }
+
       currentStreamingMsg = {
         role: 'assistant',
         content: '',
@@ -171,6 +216,14 @@ const Chat = (function() {
         streaming: true
       };
       messages.push(currentStreamingMsg);
+
+      // Check if date divider is needed
+      const container = document.getElementById('messagesContainer');
+      if (container && ChatMessageUtils.getDateDividerIfNeeded(messages.slice(0, -1), currentStreamingMsg)) {
+        const divider = ChatMessageUtils.createDateDivider(currentStreamingMsg.timestamp);
+        container.appendChild(divider);
+      }
+
       renderMessage(currentStreamingMsg);
     }
 
@@ -181,14 +234,32 @@ const Chat = (function() {
 
   /**
    * End streaming message
+   * Now uses ChatMessageUtils.hideTypingIndicator()
    */
   function endStream() {
+    // Hide typing indicator
+    ChatMessageUtils.hideTypingIndicator();
+
     if (currentStreamingMsg) {
       currentStreamingMsg.streaming = false;
       const msgEl = document.querySelector('.message.streaming');
       if (msgEl) msgEl.classList.remove('streaming');
       currentStreamingMsg = null;
     }
+  }
+
+  /**
+   * Show typing indicator (public API)
+   */
+  function showTyping() {
+    ChatMessageUtils.showTypingIndicator();
+  }
+
+  /**
+   * Hide typing indicator (public API)
+   */
+  function hideTyping() {
+    ChatMessageUtils.hideTypingIndicator();
   }
 
   /**
@@ -206,8 +277,8 @@ const Chat = (function() {
     msgEl.className = `message ${msg.role}${msg.streaming ? ' streaming' : ''}`;
     msgEl.dataset.timestamp = msg.timestamp;
 
-    const avatar = msg.role === 'user' ? '👤' : '🦀';
-    const sender = msg.role === 'user' ? '你' : 'YooAI';
+    const avatar = msg.role === 'user' ? '*' : '>';
+    const sender = msg.role === 'user' ? 'YOU' : 'YOOAI';
     const time = formatTime(msg.timestamp);
 
     // Create message structure using DOM methods
@@ -278,6 +349,7 @@ const Chat = (function() {
 
   /**
    * Render content (Markdown)
+   * Exposed for other modules to use
    */
   function renderContent(content) {
     if (!content) return '';
@@ -345,6 +417,9 @@ const Chat = (function() {
     const container = document.getElementById('messagesContainer');
     if (!container) return;
 
+    // Don't create if already exists
+    if (container.querySelector('.chat-empty')) return;
+
     const emptyEl = document.createElement('div');
     emptyEl.className = 'chat-empty';
 
@@ -410,9 +485,12 @@ const Chat = (function() {
     addMessage,
     appendToStream,
     endStream,
+    showTyping,
+    hideTyping,
     clear,
     getMessages,
-    scrollToBottom
+    scrollToBottom,
+    renderContent
   };
 })();
 
