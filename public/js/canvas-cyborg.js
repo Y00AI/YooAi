@@ -32,6 +32,8 @@
 
   // ---- DRAW HELPERS ----
   function drawGlowDot(x, y, size, hue, sat, lit, alpha) {
+    // Guard against NaN/Infinity
+    if (!isFinite(x) || !isFinite(y) || !isFinite(size) || size <= 0) return;
     ctx.save();
     ctx.globalAlpha = alpha;
     const g = ctx.createRadialGradient(x, y, 0, x, y, size);
@@ -46,6 +48,7 @@
   }
 
   function drawStar(x, y, size, hue, sat, lit, alpha) {
+    if (!isFinite(x) || !isFinite(y) || !isFinite(size) || size <= 0) return;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(x, y);
@@ -72,6 +75,7 @@
   }
 
   function drawRay(x1, y1, x2, y2, hue, alpha, width) {
+    if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2) || !isFinite(width)) return;
     ctx.save();
     ctx.globalAlpha = alpha;
     const g = ctx.createLinearGradient(x1, y1, x2, y2);
@@ -854,7 +858,7 @@
       const breath = Math.sin(t * 0.55) * 0.5 + 0.5;
       for (let ring = 0; ring < 3; ring++) {
         const ringPhase = (t * 0.55 + ring * Math.PI * 0.66) % (Math.PI * 2);
-        const ringR = 20 + Math.sin(ringPhase) * 32 + ring * 12;
+        const ringR = Math.max(1, 20 + Math.sin(ringPhase) * 32 + ring * 12);
         const ringA = (0.03 + breath * 0.04) * (1 - ring * 0.28) * tA;
         if (ringA > 0.005) {
           ctx.save();

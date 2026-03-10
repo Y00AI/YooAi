@@ -29,6 +29,71 @@
   letter-spacing: 2px;
 }
 
+/* === CHAT STATUS INFO === */
+.chat-status-info {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-status-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: 'Space Mono', monospace;
+  text-transform: lowercase;
+  letter-spacing: 0.5px;
+  color: rgba(255,255,255,0.5);
+}
+
+.chat-status-item .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+/* Status colors */
+.chat-status-item .status-dot.idle {
+  background: #666;
+  box-shadow: 0 0 4px rgba(102,102,102,0.5);
+}
+
+.chat-status-item .status-dot.thinking {
+  background: #FF5A36;
+  box-shadow: 0 0 6px rgba(255,90,54,0.6);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.chat-status-item .status-dot.streaming {
+  background: #4CAF50;
+  box-shadow: 0 0 6px rgba(76,175,80,0.6);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.chat-status-item .status-dot.error {
+  background: #f44;
+  box-shadow: 0 0 4px rgba(244,68,68,0.5);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.8);
+  }
+}
+
 .chat-status {
   margin-left: auto;
   display: flex;

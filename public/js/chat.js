@@ -197,8 +197,15 @@ const Chat = (function() {
    * Now uses ChatMessageUtils.showTypingIndicator()
    */
   function appendToStream(content) {
-    // Hide typing indicator when content starts arriving
-    ChatMessageUtils.hideTypingIndicator();
+    console.log('[Chat] appendToStream called with:', content?.substring(0, 50));
+    try {
+      // Hide typing indicator when content starts arriving
+      if (typeof ChatMessageUtils !== 'undefined') {
+        ChatMessageUtils.hideTypingIndicator();
+      }
+    } catch (e) {
+      console.error('[Chat] Error hiding typing indicator:', e);
+    }
 
     // If no current streaming message, or previous one ended, create new
     if (!currentStreamingMsg || !currentStreamingMsg.streaming) {

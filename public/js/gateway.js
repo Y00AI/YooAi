@@ -94,6 +94,8 @@ const Gateway = (function() {
     const ev = (d.type === 'event' && d.event) ? d.event : (d.type || d.event || '?');
     const p = (d.type === 'event' && d.payload) ? d.payload : d;
 
+    console.log('[Gateway] Processing:', { ev, stream: p.stream, phase: p.data?.phase });
+
     // Dispatch to handlers
     dispatchMessage({ type: ev, payload: p, raw: d });
   }

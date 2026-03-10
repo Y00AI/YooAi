@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 
 let mainWindow = null;
+let fileWatcher = null;
 let tray = null;
 let server = null;
 let wss = null;
@@ -92,7 +93,10 @@ function startBackendServer() {
     if (!fs.existsSync(filePath)) filePath = path.join(__dirname, '../public/index.html');
     const ext = path.extname(filePath);
     const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' }[ext] || 'text/plain';
-    res.writeHead(200, { 'Content-Type': mime });
+    // Disable cache in dev mode
+    const headers = { 'Content-Type': mime };
+    if (isDev) headers['Cache-Control'] = 'no-store';
+    res.writeHead(200, headers);
     fs.createReadStream(filePath).pipe(res);
   });
 
@@ -216,6 +220,28 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+// ── Hot reload for development ────────────────────────────────────────────────
+function startHotReload() {
+  if (!isDev) return;
+  const publicDir = path.join(__dirname, '../public');
+  let debounceTimer = null;
+
+  fileWatcher = fs.watch(publicDir, { recursive: true }, (eventType, filename) => {
+    if (!filename || !mainWindow) return;
+    // Only reload for JS, CSS, HTML changes
+    if (/\.(js|css|html)$/i.test(filename)) {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        console.log('[YooAI] File changed, reloading:', filename);
+        if (mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.reload();
+        }
+      }, 200);
+    }
+  });
+  fileWatcher.on('error', (err) => console.log('[YooAI] File watcher error:', err.message));
+}
+
 function createTray() {
   const iconData = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAA' +
@@ -247,7 +273,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     startBackendServer();
-    server.on('listening', () => { createWindow(); createTray(); });
+    server.on('listening', () => { createWindow(); createTray(); startHotReload(); });
     app.on('activate', () => { if (!mainWindow) createWindow(); else mainWindow.show(); });
   });
 }
@@ -259,4 +285,5 @@ ipcMain.handle('get-memory-dir', () => MEMORY_DIR);
 ipcMain.on('win-minimize', () => mainWindow && mainWindow.minimize());
 ipcMain.on('win-maximize', () => { if (!mainWindow) return; mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize(); });
 ipcMain.on('win-close', () => { app.isQuitting = true; app.quit(); });
+ipcMain.on('win-devtools', () => { if (mainWindow) mainWindow.webContents.openDevTools(); });
 ipcMain.handle('get-gateway-log', () => { const today = new Date().toISOString().slice(0,10); return path.join(os.tmpdir(), 'openclaw', `openclaw-${today}.log`); });

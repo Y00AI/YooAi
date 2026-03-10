@@ -34,6 +34,10 @@
   let tlCurrentTask = null;
   let tlTimerInterval = null;
 
+  // Message deduplication - track runIds that have been streamed
+  const streamedRunIds = new Set(); // 已经通过 agent 流式显示的 runId
+  const PROCESSED_RUNID_MAX = 100; // Keep last 100 runIds
+
   const TASK_DEBOUNCE = 5000;
 
   // === INIT ===
@@ -43,9 +47,22 @@
     initMoodTick();
     initGatewayHandlers();
     initChatHandlers();
+    initDevTools();
 
     // Auto-connect after short delay
     setTimeout(() => Gateway.connect(), 700);
+  }
+
+  // === DEVTOOLS ===
+  function initDevTools() {
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'I') {
+        e.preventDefault();
+        if (window.yooai && window.yooai.openDevTools) {
+          window.yooai.openDevTools();
+        }
+      }
+    });
   }
 
   // === TITLEBAR ===
@@ -267,44 +284,141 @@
         return;
       }
 
-      if (ev === 'agent' || ev === 'agent.stream') {
+      if (ev === 'agent' || ev === 'agent.stream' || ev === 'agent.message') {
         updateStats(p);
         tlAddTokens(1);
         tlAddTag('agent');
 
-        // Handle streaming content for chat
-        let raw = p.data || p.content || p.message || p.text || '';
-        if (typeof raw !== 'string') raw = JSON.stringify(raw);
-        if (raw) {
-          Chat.appendToStream(raw);
+        // Handle Agent event with lifecycle + assistant streams
+        const payload = p.payload || p;
+        const stream = payload.stream;
+        const data = payload.data || p.data || p;
+
+        console.log('[App] Agent event:', { stream, phase: data.phase, hasDelta: !!data.delta });
+
+        // Lifecycle: start → show thinking indicator
+        if (stream === 'lifecycle' && data.phase === 'start') {
+          Chat.showTyping();
+          if (typeof ChatStatus !== 'undefined') ChatStatus.updateStatus('thinking');
+          tlStartTask('Agent 处理中 · ' + new Date().toTimeString().slice(0, 5));
+          onEvent({ brain: +0.5, chaos: -2 });
+          return;
         }
 
-        // Accumulate for timeline label
-        if (tlCurrentTask) {
-          tlCurrentTask._buf = (tlCurrentTask._buf || '') + raw;
-          const snippet = tlCurrentTask._buf.replace(/[^\w\s.,!?'-]/g, '').trim();
-          if (snippet.length > 5) {
-            tlCurrentTask.label = '💬 ' + snippet.slice(0, 45) + (snippet.length > 45 ? '…' : '');
-            if (tlCurrentTask.el) tlRenderEntry(tlCurrentTask.el, tlCurrentTask, true);
+        // Lifecycle: end → hide thinking (don't end stream, let chat:final handle it)
+        if (stream === 'lifecycle' && data.phase === 'end') {
+          Chat.hideTyping();
+          // 不在这里结束流，让 chat: final 来处理
+          if (typeof ChatStatus !== 'undefined') ChatStatus.updateStatus('idle');
+          onEvent({ brain: -0.3, vibe: +3 });
+          return;
+        }
+
+        // Assistant stream: delta for streaming text
+        // 只有明确是 assistant stream 且有 delta 内容时才处理
+        if (stream === 'assistant') {
+          const runId = payload.runId || p.runId || '';
+
+          Chat.hideTyping();
+          if (typeof ChatStatus !== 'undefined') ChatStatus.updateStatus('streaming');
+          
+          // 使用 delta（增量）而不是 text（累积）
+          let raw = data.delta || '';
+          if (!raw) {
+            raw = data.text || data.content || '';
           }
+          if (typeof raw !== 'string') raw = JSON.stringify(raw);
+          
+          console.log('[App] Assistant stream, runId:', runId, 'delta:', raw?.substring(0, 30));
+          
+          if (raw) {
+            Chat.appendToStream(raw);
+            
+            // 记录这个 runId 已经通过流式显示
+            if (runId) {
+              streamedRunIds.add(runId);
+              if (streamedRunIds.size > PROCESSED_RUNID_MAX) {
+                const arr = Array.from(streamedRunIds);
+                arr.slice(0, arr.length - PROCESSED_RUNID_MAX).forEach(id => streamedRunIds.delete(id));
+              }
+            }
+          }
+
+          // Accumulate for timeline label
+          if (tlCurrentTask) {
+            tlCurrentTask._buf = (tlCurrentTask._buf || '') + raw;
+            const snippet = tlCurrentTask._buf.replace(/[^\w\s.,!?'-]/g, '').trim();
+            if (snippet.length > 5) {
+              tlCurrentTask.label = '💬 ' + snippet.slice(0, 45) + (snippet.length > 45 ? '…' : '');
+              if (tlCurrentTask.el) tlRenderEntry(tlCurrentTask.el, tlCurrentTask, true);
+            }
+          }
+
+          onEvent({ brain: -0.3, chaos: +1 });
+          return;
         }
 
-        onEvent({ brain: -0.3, chaos: +1 });
         return;
       }
 
       if (ev === 'chat' || ev === 'chat.message') {
         updateStats(p);
         const sessionId = p.sessionKey || p.runId || p.key || '';
+        const runId = p.runId || '';
+        const state = p.state || '';
+
+        console.log('[App] Chat event:', { runId, state, hasMessage: !!p.message });
+
+        // 更新统计
         const parts = sessionId.split(':');
         const agentName = parts[1] || parts[0] || 'agent';
-        tlStartTask('会话: ' + agentName + ' · ' + new Date().toTimeString().slice(0, 5));
-        tlAddTag('chat');
-        tlMsgs++;
-        const tlMsgsEl = document.getElementById('tlMsgs');
-        if (tlMsgsEl) tlMsgsEl.textContent = tlMsgs;
+        if (state === 'final') {
+          tlStartTask('会话: ' + agentName + ' · ' + new Date().toTimeString().slice(0, 5));
+          tlAddTag('chat');
+          tlMsgs++;
+          const tlMsgsEl = document.getElementById('tlMsgs');
+          if (tlMsgsEl) tlMsgsEl.textContent = tlMsgs;
+        }
         onEvent({ vibe: +5, chaos: +8 });
         if (window._brainFire) window._brainFire(null, 5);
+
+        Chat.hideTyping();
+
+        // 检查是否已经通过 agent 事件流式显示
+        const alreadyStreamed = runId && streamedRunIds.has(runId);
+        console.log('[App] Chat final, runId:', runId, 'alreadyStreamed:', alreadyStreamed);
+
+        if (state === 'final') {
+          if (alreadyStreamed) {
+            // 已通过 agent 流式显示，只结束流
+            console.log('[App] Final: ending stream, content already displayed');
+            Chat.endStream();
+            // 清除标记，避免影响后续消息
+            streamedRunIds.delete(runId);
+          } else {
+            // 没有流式显示，添加完整消息
+            console.log('[App] Final: adding complete message');
+            const msg = p.message;
+            if (msg && (msg.content || msg.text)) {
+              let content = msg.content;
+              if (Array.isArray(content)) {
+                content = content.map(c => c.text || '').join('');
+              } else if (typeof content !== 'string') {
+                content = msg.text || JSON.stringify(content);
+              }
+
+              if (content) {
+                Chat.addMessage({
+                  role: msg.role || 'assistant',
+                  content: content,
+                  timestamp: msg.timestamp || Date.now()
+                });
+              }
+            }
+          }
+        }
+        // delta 状态的消息忽略（由 agent 事件处理）
+
         return;
       }
 
@@ -346,14 +460,14 @@
         return;
       }
 
-      if (ev === 'error' || p.error) {
+      if (ev === 'error' || (p && p.error)) {
         tlAddError();
         onEvent({ vibe: -10, brain: -1, chaos: +18 });
         return;
       }
 
       // Unknown event
-      addLog('info', (ev + '     ').slice(0, 5).toUpperCase(), JSON.stringify(p).slice(0, 100));
+      addLog('info', (ev + '     ').slice(0, 5).toUpperCase(), JSON.stringify(p || {}).slice(0, 100));
     });
   }
 

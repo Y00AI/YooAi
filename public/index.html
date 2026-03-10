@@ -23,7 +23,7 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
-    padding: 0 24px;
+    padding: 0 40px;
     gap: 16px;
   }
   .left-panel {
@@ -211,15 +211,30 @@
         <div class="chat-header">
           <span class="chat-header-icon">💬</span>
           <span class="chat-header-title">对话窗口</span>
-          <div class="chat-status">
-            <span id="chatStatus">等待连接...</span>
+          <div class="chat-status-info">
+            <div class="chat-status-item" id="chatAgentStatus">
+              <span class="status-dot idle"></span>
+              <span class="status-label">idle</span>
+            </div>
+            <div class="chat-status-item" id="chatSessionInfo">
+              <span class="status-label">session main</span>
+            </div>
+            <div class="chat-status-item" id="chatModelInfo">
+              <span class="status-label">zai/glm-5</span>
+            </div>
+            <div class="chat-status-item" id="chatThinkInfo">
+              <span class="status-label">think low</span>
+            </div>
+            <div class="chat-status-item" id="chatTokenInfo">
+              <span class="status-label">tokens 0/200k</span>
+            </div>
           </div>
         </div>
         <div id="messagesContainer" class="messages-container">
           <div class="chat-empty">
             <div class="chat-empty-icon">💬</div>
             <div class="chat-empty-title">开始对话</div>
-            <div class="chat-empty-sub">在下方输入消息开始与 YooAI 对话</div>
+            <div class="chat-empty-sub">在下方输入消息开始与 YooAI 对话。支持 Markdown 格式和代码高亮。</div>
           </div>
         </div>
         <div class="chat-input-area">
@@ -289,7 +304,11 @@
 </div>
 
 <script src="js/gateway.js"></script>
-<script src="js/chat.js"></script>
+    <script src="js/chat-message-utils.js"></script>
+    <script src="js/chat-tool-cards.js"></script>
+    <script src="js/chat-normalizer.js"></script>
+    <script src="js/chat-status.js"></script>
+    <script src="js/chat.js"></script>
 <script src="js/canvas-bg.js"></script>
 <script src="js/canvas-cyborg.js"></script>
 <script src="js/canvas-brain.js"></script>
