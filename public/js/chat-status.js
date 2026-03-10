@@ -97,19 +97,46 @@ const ChatStatus = (function() {
 
   /**
    * Update token usage
+   * @param {Object} tokens - Token info object
+   * @param {number} tokens.used - Used tokens
+   * @param {number} tokens.total - Total context window
+   * @param {number} tokens.percentUsed - Pre-calculated percentage (optional)
    */
-  function updateTokens(used, total, max) {
+  function updateTokens(tokens) {
     const tokenEl = document.getElementById('chatTokenInfo');
-    if (tokenEl) {
-      const labelEl = tokenEl.querySelector('.status-label');
-      const pct = Math.round((used / total) * 100);
-      const pctColor = pct > 75 ? '#f9a070' :
-                       pct > 50 ? '#f9e49a' :
-                       pct > 25 ? '#4caf50' : '#a0ffc8';
-
-      labelEl.textContent = `tokens ${used}k/${total}k (${pct}%)`;
-      labelEl.style.color = pctColor;
+    if (!tokenEl) {
+      console.log('[ChatStatus] Token element not found');
+      return;
     }
+
+    const labelEl = tokenEl.querySelector('.status-label');
+    if (!labelEl) return;
+
+    // Support both object and individual params
+    let used, total, pct;
+    if (typeof tokens === 'object') {
+      used = tokens.used || 0;
+      total = tokens.total || 204800;
+      pct = tokens.percentUsed || Math.round((used / total) * 100);
+    } else {
+      // Legacy: updateTokens(used, total, max)
+      used = arguments[0] || 0;
+      total = arguments[1] || 204800;
+      pct = Math.round((used / total) * 100);
+    }
+
+    console.log('[ChatStatus] Updating tokens:', { used, total, pct });
+
+    const usedK = Math.round(used / 1000);
+    const totalK = Math.round(total / 1000);
+
+    // Color based on percentage: red > 70%, yellow > 50%, green <= 50%
+    const pctColor = pct > 70 ? '#ff6b6b' :   // 红色
+                     pct > 50 ? '#ffd93d' :   // 黄色
+                     '#4caf50';               // 绿色
+
+    labelEl.textContent = `tokens ${usedK}k/${totalK}k (${pct}%)`;
+    labelEl.style.color = pctColor;
   }
 
   /**

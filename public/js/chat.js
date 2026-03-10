@@ -256,6 +256,104 @@ const Chat = (function() {
   }
 
   /**
+   * Append tool call card to streaming message
+   * @param {Object} options - Tool call options
+   * @param {string} options.name - Tool name
+   * @param {Object} options.args - Tool arguments
+   * @param {string} options.status - Status (pending/running)
+   */
+  function appendToolCall({ name, args, status = 'running' }) {
+    console.log('[Chat] appendToolCall:', name);
+
+    // Ensure we have a streaming message container
+    if (!currentStreamingMsg || !currentStreamingMsg.streaming) {
+      // Create a new streaming message for tool calls
+      currentStreamingMsg = {
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+        streaming: true
+      };
+      messages.push(currentStreamingMsg);
+
+      const container = document.getElementById('messagesContainer');
+      if (container && ChatMessageUtils.getDateDividerIfNeeded(messages.slice(0, -1), currentStreamingMsg)) {
+        const divider = ChatMessageUtils.createDateDivider(currentStreamingMsg.timestamp);
+        container.appendChild(divider);
+      }
+
+      renderMessage(currentStreamingMsg);
+    }
+
+    // Create tool call card
+    if (typeof ChatToolCards !== 'undefined') {
+      const card = ChatToolCards.createToolCallCard({ name, args, status });
+      appendElementToStream(card);
+    }
+
+    scrollToBottom();
+  }
+
+  /**
+   * Append tool result card to streaming message
+   * @param {Object} options - Tool result options
+   * @param {string} options.name - Tool name
+   * @param {string} options.text - Result text
+   * @param {boolean} options.success - Whether tool succeeded
+   */
+  function appendToolResult({ name, text, success = true }) {
+    console.log('[Chat] appendToolResult:', name, 'success:', success);
+
+    // Ensure we have a streaming message container
+    if (!currentStreamingMsg || !currentStreamingMsg.streaming) {
+      currentStreamingMsg = {
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+        streaming: true
+      };
+      messages.push(currentStreamingMsg);
+
+      const container = document.getElementById('messagesContainer');
+      if (container && ChatMessageUtils.getDateDividerIfNeeded(messages.slice(0, -1), currentStreamingMsg)) {
+        const divider = ChatMessageUtils.createDateDivider(currentStreamingMsg.timestamp);
+        container.appendChild(divider);
+      }
+
+      renderMessage(currentStreamingMsg);
+    }
+
+    // Create tool result card
+    if (typeof ChatToolCards !== 'undefined') {
+      const card = ChatToolCards.createToolResultCard({ name, text, success });
+      appendElementToStream(card);
+    }
+
+    scrollToBottom();
+  }
+
+  /**
+   * Append a DOM element to the current streaming message content
+   * @param {HTMLElement} element - Element to append
+   */
+  function appendElementToStream(element) {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+
+    // Find current streaming message content area
+    let contentEl = container.querySelector('.message.streaming .message-content');
+    if (!contentEl) {
+      // Fallback: find last assistant message
+      const lastMsg = container.querySelector('.message.assistant:last-child .message-content');
+      contentEl = lastMsg;
+    }
+
+    if (contentEl) {
+      contentEl.appendChild(element);
+    }
+  }
+
+  /**
    * Show typing indicator (public API)
    */
   function showTyping() {
@@ -491,6 +589,8 @@ const Chat = (function() {
     init,
     addMessage,
     appendToStream,
+    appendToolCall,
+    appendToolResult,
     endStream,
     showTyping,
     hideTyping,

@@ -40,6 +40,11 @@
 
   const TASK_DEBOUNCE = 5000;
 
+  // Session state
+  let currentSessionKey = 'agent:main:main'; // 当前活跃的 session key
+  let lastStatusResult = null; // 缓存最后的 status 结果
+  let statusPollInterval = null;
+
   // === INIT ===
   function init() {
     initTitlebar();
@@ -48,9 +53,90 @@
     initGatewayHandlers();
     initChatHandlers();
     initDevTools();
+    initStatusPolling();
+
+    // Initialize background canvas (cyborg and brain auto-init)
+    if (typeof initBg === 'function') initBg('bgCanvas');
 
     // Auto-connect after short delay
     setTimeout(() => Gateway.connect(), 700);
+  }
+
+  // === STATUS POLLING ===
+  function initStatusPolling() {
+    // Poll session status every 30 seconds
+    statusPollInterval = setInterval(() => {
+      if (Gateway.isConnected()) {
+        fetchSessionStatus();
+      }
+    }, 30000);
+
+    // Also poll on gateway connect
+    Gateway.onMessage((msg) => {
+      if (msg.type === 'gateway.connected') {
+        // Wait a bit for auth to complete
+        setTimeout(() => fetchSessionStatus(), 2000);
+      }
+    });
+  }
+
+  async function fetchSessionStatus() {
+    try {
+      const result = await Gateway.request('status', {});
+      console.log('[App] Status:', result);
+      updateSessionUI(result);
+    } catch (err) {
+      console.log('[App] Failed to fetch status:', err.message);
+    }
+  }
+
+  function updateSessionUI(result) {
+    if (!result) return;
+
+    // 缓存结果
+    lastStatusResult = result;
+
+    // 从 result.sessions.recent 数组获取当前会话的 token 信息
+    const sessions = result.sessions?.recent || [];
+    // 找到匹配当前 sessionKey 的会话，或者取第一个
+    const current = sessions.find(s => s.key === currentSessionKey) || sessions[0];
+
+    console.log('[App] Updating session UI, current session:', current?.key);
+
+    if (current && typeof ChatStatus !== 'undefined') {
+      // 字段名是 totalTokens，不是 used
+      const used = current.totalTokens || 0;
+      const max = current.contextTokens || 204800;
+      const percent = current.percentUsed || 0;
+
+      console.log('[App] Token info:', { used, max, percent });
+
+      ChatStatus.updateTokens({
+        used: used,
+        total: max,
+        percentUsed: percent
+      });
+
+      // 更新模型信息
+      if (current.model) {
+        ChatStatus.updateModel(current.model);
+      }
+    }
+  }
+
+  function updateSessionFromKey(sessionKey) {
+    if (!sessionKey) return;
+
+    currentSessionKey = sessionKey;
+
+    // Parse sessionKey format: "agent:main:main" or "agent:main:cron:news"
+    const parts = sessionKey.split(':');
+    const agentId = parts[1] || 'main';
+    const sessionId = parts.slice(2).join(':') || 'main';
+
+    if (typeof ChatStatus !== 'undefined') {
+      ChatStatus.updateSession(sessionId);
+    }
   }
 
   // === DEVTOOLS ===
@@ -311,6 +397,9 @@
           // 不在这里结束流，让 chat: final 来处理
           if (typeof ChatStatus !== 'undefined') ChatStatus.updateStatus('idle');
           onEvent({ brain: -0.3, vibe: +3 });
+
+          // 对话结束后更新 token 使用情况
+          setTimeout(() => fetchSessionStatus(), 500);
           return;
         }
 
@@ -321,16 +410,40 @@
 
           Chat.hideTyping();
           if (typeof ChatStatus !== 'undefined') ChatStatus.updateStatus('streaming');
-          
+
+          // 检查是否是工具调用/结果
+          const dataType = data.type;
+          if (dataType === 'tool_call') {
+            console.log('[App] Tool call:', data.name, data.args);
+            Chat.appendToolCall({
+              name: data.name,
+              args: data.args,
+              status: 'running'
+            });
+            onEvent({ vibe: -2, brain: -1, chaos: +8 });
+            return;
+          }
+
+          if (dataType === 'tool_result') {
+            console.log('[App] Tool result:', data.name, data.text?.substring(0, 50));
+            Chat.appendToolResult({
+              name: data.name,
+              text: data.text,
+              success: !data.is_error
+            });
+            onEvent({ vibe: data.is_error ? -8 : +4, brain: -1, chaos: data.is_error ? +15 : -6 });
+            return;
+          }
+
           // 使用 delta（增量）而不是 text（累积）
           let raw = data.delta || '';
           if (!raw) {
             raw = data.text || data.content || '';
           }
           if (typeof raw !== 'string') raw = JSON.stringify(raw);
-          
+
           console.log('[App] Assistant stream, runId:', runId, 'delta:', raw?.substring(0, 30));
-          
+
           if (raw) {
             Chat.appendToStream(raw);
             
@@ -366,6 +479,11 @@
         const sessionId = p.sessionKey || p.runId || p.key || '';
         const runId = p.runId || '';
         const state = p.state || '';
+
+        // Update session info from sessionKey
+        if (p.sessionKey) {
+          updateSessionFromKey(p.sessionKey);
+        }
 
         console.log('[App] Chat event:', { runId, state, hasMessage: !!p.message });
 

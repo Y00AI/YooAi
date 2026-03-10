@@ -7,6 +7,7 @@ const Gateway = (function() {
   let ws = null;
   let connected = false;
   let messageHandlers = [];
+  let pendingRequests = new Map(); // id → { resolve, timeout }
 
   /**
    * Connect to WebSocket
@@ -83,9 +84,62 @@ const Gateway = (function() {
   }
 
   /**
+   * Send request and wait for response
+   * @param {string} method - Method name
+   * @param {Object} params - Request parameters
+   * @param {number} timeout - Timeout in ms (default 10000)
+   * @returns {Promise<Object>} Response payload
+   */
+  function request(method, params = {}, timeout = 10000) {
+    return new Promise((resolve, reject) => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        reject(new Error('Not connected'));
+        return;
+      }
+
+      const id = `req-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+      const timer = setTimeout(() => {
+        pendingRequests.delete(id);
+        reject(new Error(`Request timeout: ${method}`));
+      }, timeout);
+
+      pendingRequests.set(id, {
+        resolve: (res) => {
+          if (res.ok) {
+            resolve(res.payload || res);
+          } else {
+            reject(new Error(res.error || 'Request failed'));
+          }
+        },
+        timeout: timer
+      });
+
+      const payload = {
+        type: 'req',
+        id,
+        method,
+        params
+      };
+
+      console.log('[Gateway] Sending request:', method, params);
+      ws.send(JSON.stringify(payload));
+    });
+  }
+
+  /**
    * Process incoming message
    */
   function processMessage(d) {
+    // Handle response to our request
+    if (d.type === 'res' && d.id && pendingRequests.has(d.id)) {
+      const pending = pendingRequests.get(d.id);
+      clearTimeout(pending.timeout);
+      pendingRequests.delete(d.id);
+      pending.resolve(d);
+      return;
+    }
+
     // Skip internal protocol frames
     if (d.type === 'res') return;
     if (d.type === 'event' && d.event === 'connect.challenge') return;
@@ -150,16 +204,6 @@ const Gateway = (function() {
   }
 
   /**
-   * Register message handler (returns unsubscribe function)
-   */
-  function onMessage(handler) {
-    messageHandlers.push(handler);
-    return () => {
-      messageHandlers = messageHandlers.filter(h => h !== handler);
-    };
-  }
-
-  /**
    * Save token and connect
    */
   async function saveTokenAndConnect(token) {
@@ -184,6 +228,7 @@ const Gateway = (function() {
     connect,
     disconnect,
     send,
+    request,
     onMessage,
     isConnected,
     saveTokenAndConnect
