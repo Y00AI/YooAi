@@ -10,7 +10,7 @@ let tray = null;
 let server = null;
 let wss = null;
 
-const PREFERRED_PORT = 7890;
+const PREFERRED_PORT = 8765;
 let PORT = PREFERRED_PORT;
 const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(os.homedir(), '.openclaw');
 const WORKSPACE = path.join(OPENCLAW_HOME, 'workspace');
