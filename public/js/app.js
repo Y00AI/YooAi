@@ -76,8 +76,72 @@
       if (msg.type === 'gateway.connected') {
         // Wait a bit for auth to complete
         setTimeout(() => fetchSessionStatus(), 2000);
+        // Load chat history
+        setTimeout(() => loadChatHistory(), 1500);
       }
     });
+  }
+
+  /**
+   * Load chat history from gateway
+   */
+  async function loadChatHistory() {
+    try {
+      console.log('[App] Loading chat history for session:', currentSessionKey);
+      const result = await Gateway.request('chat.history', {
+        sessionKey: currentSessionKey,
+        limit: 100
+      });
+
+      console.log('[App] Chat history result:', result);
+
+      if (result && Array.isArray(result.messages)) {
+        // Clear existing messages first
+        if (typeof Chat !== 'undefined') {
+          Chat.clear();
+        }
+
+        let loadedCount = 0;
+
+        // Add each message
+        for (const msg of result.messages) {
+          // 跳过工具结果消息
+          if (msg.role === 'toolResult') {
+            continue;
+          }
+
+          if (msg && (msg.content || msg.text)) {
+            let content = msg.content;
+
+            if (Array.isArray(content)) {
+              // 只提取文本内容，忽略 toolCall、thinking 等
+              content = content
+                .filter(c => c.type === 'text')
+                .map(c => c.text || '')
+                .join('');
+
+              // 如果没有文本内容，跳过此消息
+              if (!content) continue;
+            } else if (typeof content !== 'string') {
+              content = msg.text || JSON.stringify(content);
+            }
+
+            if (content) {
+              Chat.addMessage({
+                role: msg.role || 'user',
+                content: content,
+                timestamp: msg.timestamp || Date.now()
+              });
+              loadedCount++;
+            }
+          }
+        }
+
+        console.log('[App] Loaded', loadedCount, 'messages from history (filtered from', result.messages.length, ')');
+      }
+    } catch (err) {
+      console.log('[App] Failed to load chat history:', err.message);
+    }
   }
 
   async function fetchSessionStatus() {
