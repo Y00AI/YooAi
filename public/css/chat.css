@@ -867,3 +867,202 @@
 .tool-card.tool-result[data-success="false"] .tool-card-output pre {
   color: rgba(249, 169, 142, 0.9);
 }
+
+
+/* === FOLDABLE CARDS (toolCall, toolResult, thinking) === */
+/* 简化版卡片组件：card > header + content */
+.foldable-card {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.foldable-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.foldable-card-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.foldable-card-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.foldable-card-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.foldable-card-chevron {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  transition: transform 0.2s;
+}
+
+.foldable-card[data-state="partial"] .foldable-card-chevron,
+.foldable-card[data-state="full"] .foldable-card-chevron {
+  transform: rotate(90deg);
+}
+
+/* Card Types - 边框颜色区分 */
+.foldable-card.tool-call {
+  border-left: 3px solid #64b5f6;
+}
+
+.foldable-card.tool-call .foldable-card-label {
+  color: #64b5f6;
+}
+
+.foldable-card.tool-result {
+  border-left: 3px solid #81c784;
+}
+
+.foldable-card.tool-result .foldable-card-label {
+  color: #81c784;
+}
+
+.foldable-card.tool-result.error {
+  border-left: 3px solid #e57373;
+}
+
+.foldable-card.tool-result.error .foldable-card-label {
+  color: #e57373;
+}
+
+.foldable-card.thinking {
+  border-left: 3px solid #ba68c8;
+}
+
+.foldable-card.thinking .foldable-card-label {
+  color: #ba68c8;
+}
+
+/* 工具特定颜色 */
+/* READ - 蓝色 */
+.foldable-card.tool-read {
+  border-left: 3px solid #42a5f5;
+}
+.foldable-card.tool-read .foldable-card-label {
+  color: #42a5f5;
+}
+
+/* EDIT - 橙色 */
+.foldable-card.tool-edit {
+  border-left: 3px solid #ffa726;
+}
+.foldable-card.tool-edit .foldable-card-label {
+  color: #ffa726;
+}
+
+/* WRITE - 紫色 */
+.foldable-card.tool-write {
+  border-left: 3px solid #ab47bc;
+}
+.foldable-card.tool-write .foldable-card-label {
+  color: #ab47bc;
+}
+
+/* BASH/EXEC - 黄色 */
+.foldable-card.tool-bash,
+.foldable-card.tool-exec {
+  border-left: 3px solid #ffca28;
+}
+.foldable-card.tool-bash .foldable-card-label,
+.foldable-card.tool-exec .foldable-card-label {
+  color: #ffca28;
+}
+
+/* GREP - 青色 */
+.foldable-card.tool-grep {
+  border-left: 3px solid #26a69a;
+}
+.foldable-card.tool-grep .foldable-card-label {
+  color: #26a69a;
+}
+
+/* GLOB - 绿色 */
+.foldable-card.tool-glob {
+  border-left: 3px solid #66bb6a;
+}
+.foldable-card.tool-glob .foldable-card-label {
+  color: #66bb6a;
+}
+
+/* WEBSEARCH - 天蓝 */
+.foldable-card.tool-websearch {
+  border-left: 3px solid #29b6f6;
+}
+.foldable-card.tool-websearch .foldable-card-label {
+  color: #29b6f6;
+}
+
+/* NOTEBOOK - 棕色 */
+.foldable-card.tool-notebook {
+  border-left: 3px solid #8d6e63;
+}
+.foldable-card.tool-notebook .foldable-card-label {
+  color: #8d6e63;
+}
+
+/* Content Area - 默认隐藏 */
+.foldable-card-content {
+  display: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.foldable-card-content-inner {
+  padding: 8px 12px;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.75);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Expand Button */
+.foldable-card-expand {
+  width: 100%;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.5);
+  font-family: 'Nunito', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.foldable-card-expand:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Tool content container */
+.tool-content-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-text-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

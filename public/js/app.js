@@ -105,39 +105,129 @@
 
         // Add each message
         for (const msg of result.messages) {
-          // 跳过工具结果消息
-          if (msg.role === 'toolResult') {
+          if (!msg || (!msg.content && !msg.text)) continue;
+
+          const content = msg.content;
+          const role = msg.role || 'user';
+          const timestamp = msg.timestamp || Date.now();
+
+          console.log('[App] Processing message:', { role, stopReason: msg.stopReason, contentType: Array.isArray(content) ? 'array' : typeof content });
+
+          // 跳过 assistant 的中间过程（只显示最终结果）
+          if (role === 'assistant' && msg.stopReason && msg.stopReason !== 'stop') {
+            console.log('[App] Skipping intermediate assistant message');
             continue;
           }
 
-          if (msg && (msg.content || msg.text)) {
-            let content = msg.content;
+          // 处理 toolResult 消息（role === 'toolResult'）
+          if (role === 'toolResult') {
+            console.log('[App] Processing toolResult message:', msg);
+            if (typeof ChatToolCards !== 'undefined') {
+              const resultText = Array.isArray(content)
+                ? content.map(c => c.text || '').join('')
+                : (typeof content === 'string' ? content : JSON.stringify(content));
 
-            if (Array.isArray(content)) {
-              // 只提取文本内容，忽略 toolCall、thinking 等
-              content = content
-                .filter(c => c.type === 'text')
-                .map(c => c.text || '')
-                .join('');
+              const card = ChatToolCards.createToolResultCard({
+                name: msg.toolName || msg.tool_name || 'Tool',
+                text: resultText,
+                success: !msg.isError && !msg.is_error
+              });
 
-              // 如果没有文本内容，跳过此消息
-              if (!content) continue;
-            } else if (typeof content !== 'string') {
-              content = msg.text || JSON.stringify(content);
+              if (card && typeof Chat !== 'undefined') {
+                console.log('[App] Appending toolResult card');
+                Chat.appendElement(card);
+                loadedCount++;
+              }
+            }
+            continue;
+          }
+
+          // 字符串内容：直接添加
+          if (typeof content === 'string') {
+            if (content) {
+              Chat.addMessage({ role, content, timestamp });
+              loadedCount++;
+            }
+            continue;
+          }
+
+          // 非数组内容
+          if (!Array.isArray(content)) {
+            const text = msg.text || JSON.stringify(content);
+            if (text) {
+              Chat.addMessage({ role, content: text, timestamp });
+              loadedCount++;
+            }
+            continue;
+          }
+
+          // 数组内容：分类处理
+          const textParts = [];
+          const specialItems = [];
+
+          console.log('[App] Processing message content array:', content);
+
+          for (const item of content) {
+            if (!item) continue;
+
+            const itemType = item.type;
+            console.log('[App] Content item type:', itemType, 'item:', item);
+
+            if (itemType === 'text') {
+              textParts.push(item.text || '');
+            } else if (itemType === 'toolCall' || itemType === 'tool_use') {
+              specialItems.push({
+                type: 'toolCall',
+                name: item.name || item.tool_name || 'Tool',
+                args: item.input || item.arguments || item.args
+              });
+            } else if (itemType === 'thinking') {
+              specialItems.push({
+                type: 'thinking',
+                content: item.thinking || item.text || ''
+              });
+            }
+          }
+
+          console.log('[App] specialItems:', specialItems);
+
+          // 添加文本消息（如果有）
+          const textContent = textParts.join('');
+          if (textContent) {
+            Chat.addMessage({ role, content: textContent, timestamp });
+            loadedCount++;
+          }
+
+          // 添加特殊类型卡片（toolCall、thinking）
+          for (const item of specialItems) {
+            if (typeof ChatToolCards === 'undefined') {
+              console.warn('[App] ChatToolCards not available');
+              continue;
             }
 
-            if (content) {
-              Chat.addMessage({
-                role: msg.role || 'user',
-                content: content,
-                timestamp: msg.timestamp || Date.now()
+            let card = null;
+            if (item.type === 'toolCall') {
+              card = ChatToolCards.createToolCallCard({
+                name: item.name,
+                args: item.args,
+                status: 'completed'
               });
+            } else if (item.type === 'thinking') {
+              card = ChatToolCards.createThinkingCard({
+                content: item.content,
+                summary: 'Thinking'
+              });
+            }
+
+            if (card && typeof Chat !== 'undefined') {
+              console.log('[App] Appending card:', item.type);
+              Chat.appendElement(card);
               loadedCount++;
             }
           }
         }
 
-        console.log('[App] Loaded', loadedCount, 'messages from history (filtered from', result.messages.length, ')');
+        console.log('[App] Loaded', loadedCount, 'messages from history (total', result.messages.length, ')');
       }
     } catch (err) {
       console.log('[App] Failed to load chat history:', err.message);

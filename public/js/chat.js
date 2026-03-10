@@ -354,6 +354,29 @@ const Chat = (function() {
   }
 
   /**
+   * Append a DOM element directly to the messages container
+   * Used for adding tool cards from chat history
+   * @param {HTMLElement} element - Element to append
+   */
+  function appendElement(element) {
+    const container = document.getElementById('messagesContainer');
+    console.log('[Chat] appendElement called, container:', container, 'element:', element);
+    if (!container) {
+      console.error('[Chat] messagesContainer not found!');
+      return;
+    }
+
+    // Remove empty state if present
+    const empty = container.querySelector('.chat-empty');
+    if (empty) empty.remove();
+
+    console.log('[Chat] Appending element to container, element classes:', element.className);
+    container.appendChild(element);
+    scrollToBottom();
+    console.log('[Chat] Element appended successfully');
+  }
+
+  /**
    * Show typing indicator (public API)
    */
   function showTyping() {
@@ -591,6 +614,7 @@ const Chat = (function() {
     appendToStream,
     appendToolCall,
     appendToolResult,
+    appendElement,
     endStream,
     showTyping,
     hideTyping,
