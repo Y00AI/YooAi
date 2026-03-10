@@ -9,10 +9,63 @@
 <link href="css/chat.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/DOMPurify/3.0.5/purify.min.js"></script>
+<style>
+  /* 布局修正 */
+  html, body { height: 100%; overflow: hidden; }
+  .app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+  .main-content {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0 24px;
+    gap: 16px;
+  }
+  .left-panel {
+    flex: 0 0 350px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .center-panel {
+    flex: 0 0 auto;
+    width: calc((100% - 350px - 48px) * 0.45);
+    min-width: 300px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .right-panel {
+    flex: 1;
+    min-width: 350px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .footer-panel {
+    flex: 0 0 220px;
+    min-height: 220px;
+    max-height: 220px;
+    overflow: hidden;
+  }
+  /* 确保卡片内容可滚动 */
+  .left-panel .card { flex-shrink: 0; }
+  .left-panel .card:last-child { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .center-panel .card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+</style>
 </head>
 <body>
-<canvas id="bgCanvas"></canvas>
 
+<!-- Titlebar for Windows -->
 <div class="titlebar" id="titlebar">
   <span class="titlebar-crab">🦀</span>
   <span class="titlebar-title">YooAI</span>
@@ -23,7 +76,8 @@
   </div>
 </div>
 
-<!-- Colorful background blobs -->
+<!-- Background -->
+<canvas id="bgCanvas" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;"></canvas>
 <div class="bg">
   <div class="bg-blob bg-blob-1"></div>
   <div class="bg-blob bg-blob-2"></div>
@@ -39,10 +93,10 @@
 <div class="bg-noise"></div>
 <div class="floating-bits" id="bits"></div>
 
-<div class="container">
+<div class="app-container">
 
   <!-- Header -->
-  <div class="header glass" style="margin-bottom:22px;">
+  <div class="header glass">
     <div class="header-mascot">🦀</div>
     <div style="margin-left:4px;">
       <div class="logo-text">YooAI</div>
@@ -57,9 +111,10 @@
     </div>
   </div>
 
-  <!-- Left-Right Split Layout -->
-  <div class="main-layout">
-    <!-- Left Panel -->
+  <!-- Main Content -->
+  <div class="main-content">
+
+    <!-- Left Panel (Fixed 350px) -->
     <div class="left-panel">
       <!-- Mood -->
       <div class="card glass">
@@ -101,7 +156,7 @@
           <span class="card-title" id="cyborgLabel">智能体灵魂</span>
           <span style="margin-left:auto;font-size:9px;font-weight:800;letter-spacing:2px;color:rgba(160,240,240,0.6)" id="cyborgStatus">待机</span>
         </div>
-        <canvas id="cyborgCanvas" style="width:100%;height:340px;display:block;background:transparent;"></canvas>
+        <canvas id="cyborgCanvas" style="width:100%;height:100%;display:block;background:transparent;"></canvas>
         <div style="position:absolute;bottom:0;left:0;right:0;padding:10px 14px;background:rgba(10,22,40,0.5);backdrop-filter:blur(8px);display:flex;justify-content:space-between;align-items:center;">
           <span style="font-size:9px;font-weight:800;color:rgba(160,240,240,0.5);letter-spacing:1px;" id="cyborgMood">😴 休眠中</span>
           <div style="display:flex;gap:6px;" id="cyborgDots">
@@ -111,13 +166,14 @@
           </div>
         </div>
       </div>
+    </div><!-- end left-panel -->
 
-      <!-- Activity Timeline (Compact) -->
-      <div class="card glass logs-card" style="display:flex;flex-direction:column;">
+    <!-- Center Panel (45% of remaining) -->
+    <div class="center-panel">
+      <div class="card glass logs-card">
         <div class="card-header">
           <span class="card-icon">⚡</span>
           <span class="card-title">活动时间线</span>
-          <!-- Task progress bar -->
           <div style="flex:1;margin:0 12px;display:flex;flex-direction:column;gap:2px;">
             <div style="display:flex;justify-content:space-between;font-size:8px;font-weight:800;color:rgba(255,255,255,0.35);letter-spacing:0.5px;">
               <span>🏁</span><span>🏆</span>
@@ -126,13 +182,11 @@
               <div id="brainBar" style="height:100%;width:0%;border-radius:50px;background:linear-gradient(90deg,#a0f0f0,#b2ead6,#7de8e8);transition:width 0.5s ease;box-shadow:0 0 6px rgba(100,220,220,0.4);"></div>
             </div>
           </div>
-          <!-- Token counter -->
           <div style="display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:2px 8px;">
             <span style="font-size:8px;font-weight:800;color:rgba(255,255,255,0.4);letter-spacing:1px;">令牌</span>
             <span id="tokenCount" style="font-size:11px;font-weight:800;color:#40e0ff;font-family:monospace;min-width:40px;text-align:right;">0</span>
           </div>
         </div>
-        <!-- Stats bar -->
         <div style="display:flex;gap:0;border-bottom:1px solid rgba(255,255,255,0.06);">
           <div class="tl-stat" id="tlStatTasks"><span class="tl-stat-n" id="tlTasks">0</span><span class="tl-stat-l">任务</span></div>
           <div class="tl-stat" id="tlStatMsgs"><span class="tl-stat-n" id="tlMsgs">0</span><span class="tl-stat-l">消息</span></div>
@@ -141,7 +195,7 @@
           <div class="tl-stat" style="border-right:none;"><span class="tl-stat-n" id="tlTokenRate">0</span><span class="tl-stat-l">令牌/任务</span></div>
         </div>
         <div class="card-body" style="flex:1;overflow:hidden;padding:0;">
-          <div id="timelineList" style="max-height:200px;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px;">
+          <div id="timelineList" style="height:100%;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px;">
             <div class="tl-empty" id="tlEmpty">
               <span style="font-size:24px;">✨</span>
               <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.3);margin-top:4px;">等待活动...</div>
@@ -149,23 +203,28 @@
           </div>
         </div>
       </div>
+    </div><!-- end center-panel -->
 
-    </div><!-- end left-panel -->
-
-    <!-- Right Panel -->
+    <!-- Right Panel (55% of remaining) - Chat -->
     <div class="right-panel">
-      <!-- Chat Panel -->
       <div class="card glass chat-panel">
         <div class="chat-header">
           <span class="chat-header-icon">💬</span>
           <span class="chat-header-title">对话窗口</span>
+          <div class="chat-status">
+            <span id="chatStatus">等待连接...</span>
+          </div>
         </div>
         <div id="messagesContainer" class="messages-container">
-          <!-- 消息会在这里渲染 -->
+          <div class="chat-empty">
+            <div class="chat-empty-icon">💬</div>
+            <div class="chat-empty-title">开始对话</div>
+            <div class="chat-empty-sub">在下方输入消息开始与 YooAI 对话</div>
+          </div>
         </div>
         <div class="chat-input-area">
           <div class="chat-input-wrapper">
-            <textarea id="chatInput" class="chat-input" placeholder="输入消息... (Cmd+Enter 发送)" rows="4"></textarea>
+            <textarea id="chatInput" class="chat-input" placeholder="输入消息... (Cmd+Enter 发送)" rows="3"></textarea>
             <button id="chatSendBtn" class="chat-send-btn">➤</button>
           </div>
           <div class="chat-hint">按 Cmd+Enter 发送</div>
@@ -173,10 +232,10 @@
       </div>
     </div><!-- end right-panel -->
 
-  </div><!-- end main-layout -->
+  </div><!-- end main-content -->
 
-  <!-- Brain Memory Network -->
-  <div class="card glass memory-card">
+  <!-- Footer Panel (Brain Memory) -->
+  <div class="card glass memory-card footer-panel">
     <div class="card-header">
       <span class="card-icon">🧠</span>
       <span class="card-title">大脑记忆</span>
@@ -185,8 +244,8 @@
         <span id="memStatus" style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(160,240,240,0.5);">空闲</span>
       </div>
     </div>
-    <div style="position:relative;width:100%;height:220px;">
-      <canvas id="brainCanvas" style="width:100%;height:100%;display:block;border-radius:0 0 24px 24px;"></canvas>
+    <div style="position:relative;width:100%;height:calc(100% - 44px);">
+      <canvas id="brainCanvas" style="width:100%;height:100%;display:block;"></canvas>
       <div style="position:absolute;bottom:10px;left:14px;display:flex;gap:12px;pointer-events:none;">
         <div style="display:flex;align-items:center;gap:4px;"><div style="width:6px;height:6px;border-radius:50%;background:#a0f0f0;box-shadow:0 0 4px #a0f0f0;"></div><span style="font-size:8px;font-weight:800;color:rgba(255,255,255,0.35);">回忆</span></div>
         <div style="display:flex;align-items:center;gap:4px;"><div style="width:6px;height:6px;border-radius:50%;background:#f9e49a;box-shadow:0 0 4px #f9e49a;"></div><span style="font-size:8px;font-weight:800;color:rgba(255,255,255,0.35);">活跃</span></div>
@@ -195,7 +254,7 @@
     </div>
   </div>
 
-</div>
+</div><!-- end app-container -->
 
 <!-- Modal -->
 <div class="overlay" id="overlay">

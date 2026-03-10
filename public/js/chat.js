@@ -29,6 +29,42 @@ const Chat = (function() {
 
     setupEventListeners();
     renderEmptyState();
+    setupConnectionListener();
+  }
+
+  /**
+   * Setup connection status listener
+   */
+  function setupConnectionListener() {
+    // Listen for gateway connection events
+    if (typeof Gateway !== 'undefined' && Gateway.onMessage) {
+      Gateway.onMessage((msg) => {
+        console.log('[Chat] Gateway message:', msg.type);
+        if (msg.type === 'gateway.connected') {
+          updateConnectionStatus(true);
+        } else if (msg.type === 'gateway.disconnected' || msg.type === 'gateway.error') {
+          updateConnectionStatus(false);
+        }
+      });
+    }
+
+    // Check initial connection status after a short delay
+    setTimeout(() => {
+      const connected = typeof Gateway !== 'undefined' && Gateway.isConnected && Gateway.isConnected();
+      console.log('[Chat] Initial connection status:', connected);
+      updateConnectionStatus(connected);
+    }, 500);
+  }
+
+  /**
+   * Update connection status UI
+   */
+  function updateConnectionStatus(isConnected) {
+    const statusEl = document.getElementById('chatStatus');
+    if (statusEl) {
+      statusEl.textContent = isConnected ? '已连接 ✓' : '未连接';
+      statusEl.style.color = isConnected ? '#a0ffc8' : '#f9a98e';
+    }
   }
 
   /**
@@ -64,12 +100,20 @@ const Chat = (function() {
    */
   function sendMessage() {
     const input = document.getElementById('chatInput');
-    if (!input) return;
+    if (!input) {
+      console.error('[Chat] Input element not found');
+      return;
+    }
 
     const text = input.value.trim();
-    if (!text) return;
+    if (!text) {
+      console.log('[Chat] Empty message, skipped');
+      return;
+    }
 
-    // Add user message
+    console.log('[Chat] Sending message:', text.slice(0, 50) + '...');
+
+    // Add user message to UI
     addMessage({
       role: 'user',
       content: text,
@@ -80,13 +124,30 @@ const Chat = (function() {
     input.value = '';
     input.style.height = 'auto';
 
-    // Send to gateway
-    Gateway.send({
-      method: 'agent.turn',
+    // Check if Gateway is connected
+    if (!Gateway.isConnected()) {
+      console.error('[Chat] Gateway not connected!');
+      addMessage({
+        role: 'assistant',
+        content: '⚠️ 未连接到网关，请先在设置中配置并连接。',
+        timestamp: Date.now()
+      });
+      return;
+    }
+
+    // Send to gateway - using correct OpenClaw WebChat protocol
+    const requestId = 'chat-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    const payload = {
+      type: 'req',
+      id: requestId,
+      method: 'chat.send',
       params: {
-        messages: [{ role: 'user', content: text }]
+        message: text
       }
-    });
+    };
+
+    const sent = Gateway.send(payload);
+    console.log('[Chat] Message sent:', sent, 'requestId:', requestId, 'payload:', payload);
   }
 
   /**
