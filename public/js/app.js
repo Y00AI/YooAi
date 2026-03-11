@@ -76,7 +76,7 @@
       if (msg.type === 'gateway.connected') {
         // Wait a bit for auth to complete
         setTimeout(() => fetchSessionStatus(), 2000);
-        // Load chat history
+        // Load chat history (will also load timeline history)
         setTimeout(() => loadChatHistory(), 1500);
       }
     });
@@ -228,10 +228,182 @@
         }
 
         console.log('[App] Loaded', loadedCount, 'messages from history (total', result.messages.length, ')');
+
+        // 从同一份数据加载时间线历史
+        loadTimelineHistory(result.messages);
       }
     } catch (err) {
       console.log('[App] Failed to load chat history:', err.message);
     }
+  }
+
+  /**
+   * Load timeline history from chat messages
+   * 将聊天历史转换为时间线条目
+   * @param {Array} messages - 可选的消息数组，如果不传则自己请求
+   */
+  async function loadTimelineHistory(messages) {
+    try {
+      console.log('[Timeline] Loading timeline history...');
+
+      let msgList = messages;
+      if (!msgList) {
+        const result = await Gateway.request('chat.history', {
+          sessionKey: currentSessionKey,
+          limit: 100
+        });
+        msgList = result?.messages || [];
+      }
+
+      if (!msgList || msgList.length === 0) {
+        console.log('[Timeline] No messages to build timeline');
+        return;
+      }
+
+      // 清空现有时间线
+      const list = document.getElementById('timelineList');
+      if (!list) return;
+
+      // 移除空状态提示
+      const empty = document.getElementById('tlEmpty');
+      if (empty) empty.remove();
+
+      // 按时间分组消息（相邻消息在 5 分钟内归为同一任务）
+      const GROUP_GAP_MS = 5 * 60 * 1000; // 5 分钟
+      const groups = [];
+      let currentGroup = null;
+
+      for (const msg of msgList) {
+        if (!msg || (!msg.content && !msg.text)) continue;
+
+        const timestamp = msg.timestamp || Date.now();
+        const role = msg.role || 'user';
+
+        // 跳过中间过程的 assistant 消息
+        if (role === 'assistant' && msg.stopReason && msg.stopReason !== 'stop') {
+          continue;
+        }
+
+        // 跳过 toolResult（已在 toolCall 中统计）
+        if (role === 'toolResult') continue;
+
+        // 检查是否需要新建分组
+        if (!currentGroup || (timestamp - currentGroup.endMs) > GROUP_GAP_MS) {
+          currentGroup = {
+            startMs: timestamp,
+            endMs: timestamp,
+            messages: [],
+            tools: 0,
+            tokens: 0,
+            hasUser: false,
+            hasAssistant: false
+          };
+          groups.push(currentGroup);
+        }
+
+        currentGroup.endMs = timestamp;
+        currentGroup.messages.push(msg);
+
+        if (role === 'user') {
+          currentGroup.hasUser = true;
+        } else if (role === 'assistant') {
+          currentGroup.hasAssistant = true;
+        }
+
+        // 统计工具调用
+        const content = msg.content;
+        if (Array.isArray(content)) {
+          for (const item of content) {
+            if (item && (item.type === 'toolCall' || item.type === 'tool_use')) {
+              currentGroup.tools++;
+            }
+          }
+        }
+      }
+
+      // 只保留最近的 20 个分组
+      const recentGroups = groups.slice(-20);
+
+      // 为每个分组创建时间线条目（从旧到新，然后反转为最新在上）
+      for (let i = 0; i < recentGroups.length; i++) {
+        const group = recentGroups[i];
+        const isFirst = (i === 0);
+        const isLast = (i === recentGroups.length - 1);
+
+        // 生成标签
+        let label = '';
+        if (group.hasUser && group.hasAssistant) {
+          label = '💬 对话';
+        } else if (group.hasUser) {
+          // 尝试提取用户消息摘要
+          const userMsg = group.messages.find(m => m.role === 'user');
+          if (userMsg) {
+            const text = extractTextFromContent(userMsg.content);
+            const snippet = text.replace(/[^\w\s.,!?'-]/g, '').trim().slice(0, 35);
+            label = snippet ? '💬 ' + snippet + (text.length > 35 ? '…' : '') : '💬 用户消息';
+          } else {
+            label = '💬 用户消息';
+          }
+        } else if (group.hasAssistant) {
+          label = '✨ Agent 响应';
+        } else {
+          label = '✨ 活动';
+        }
+
+        // 创建任务对象
+        const task = {
+          label: label,
+          startMs: group.startMs,
+          lastMs: group.endMs,
+          tools: group.tools,
+          errors: 0,
+          tokens: group.tokens,
+          tags: new Set(group.hasUser ? ['chat'] : []),
+          el: null
+        };
+
+        // 渲染条目（非活跃状态）
+        const el = document.createElement('div');
+        el.className = 'tl-entry';
+        tlRenderEntry(el, task, false);
+        list.insertBefore(el, list.firstChild);
+
+        // 更新统计
+        tlTasks++;
+        tlMsgs += group.messages.length;
+        tlTools += group.tools;
+      }
+
+      // 更新统计显示
+      const tlTasksEl = document.getElementById('tlTasks');
+      if (tlTasksEl) tlTasksEl.textContent = tlTasks;
+
+      const tlMsgsEl = document.getElementById('tlMsgs');
+      if (tlMsgsEl) tlMsgsEl.textContent = tlMsgs;
+
+      const tlToolsEl = document.getElementById('tlTools');
+      if (tlToolsEl) tlToolsEl.textContent = tlTools;
+
+      console.log('[Timeline] Loaded', recentGroups.length, 'timeline entries from history');
+
+    } catch (err) {
+      console.log('[Timeline] Failed to load timeline history:', err.message);
+    }
+  }
+
+  /**
+   * 从消息内容中提取文本
+   */
+  function extractTextFromContent(content) {
+    if (!content) return '';
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      return content
+        .filter(item => item && (item.type === 'text' || typeof item === 'string'))
+        .map(item => item.text || item || '')
+        .join('');
+    }
+    return '';
   }
 
   async function fetchSessionStatus() {
