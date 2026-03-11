@@ -263,6 +263,15 @@
       // 清空现有时间线
       const list = document.getElementById('timelineList');
       if (!list) return;
+      list.textContent = ''; // 清空现有内容
+
+      // 重置统计变量
+      tlTasks = 0;
+      tlMsgs = 0;
+      tlTools = 0;
+      tlErrors = 0;
+      tlTotalTokens = 0;
+      tlCurrentTask = null;
 
       // 移除空状态提示
       const empty = document.getElementById('tlEmpty');
