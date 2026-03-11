@@ -229,8 +229,8 @@
 
         console.log('[App] Loaded', loadedCount, 'messages from history (total', result.messages.length, ')');
 
-        // 从同一份数据加载时间线历史
-        loadTimelineHistory(result.messages);
+        // 从后端 API 加载时间线历史
+        loadTimelineHistory();
       }
     } catch (err) {
       console.log('[App] Failed to load chat history:', err.message);
@@ -238,43 +238,31 @@
   }
 
   /**
-   * Load timeline history from chat messages
-   * 将聊天历史转换为时间线条目
-   * @param {Array} messages - 可选的消息数组，如果不传则自己请求
+   * Load timeline history from backend API
+   * 从 /api/timeline/:sessionKey 获取完整的时间线数据
    */
-  async function loadTimelineHistory(messages) {
+  async function loadTimelineHistory() {
     try {
-      console.log('[Timeline] Loading timeline history...');
+      console.log('[Timeline] Loading timeline from API...');
 
-      let msgList = messages;
-      if (!msgList) {
-        const result = await Gateway.request('chat.history', {
-          sessionKey: currentSessionKey,
-          limit: 100
-        });
-        msgList = result?.messages || [];
+      // 调用后端 API 获取时间线数据
+      const response = await fetch(`/api/timeline/${encodeURIComponent(currentSessionKey)}`);
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
       }
 
-      if (!msgList || msgList.length === 0) {
-        console.log('[Timeline] No messages to build timeline');
+      const data = await response.json();
+      console.log('[Timeline] API response:', data.summary, data.stats);
+
+      if (data.error) {
+        console.error('[Timeline] API error:', data.error);
         return;
-      }
-
-      // 显示消息列表范围
-      if (msgList.length > 0) {
-        const firstMsg = msgList[0];
-        const lastMsg = msgList[msgList.length - 1];
-        console.log('[Timeline] Message range:', {
-          total: msgList.length,
-          first: { role: firstMsg.role, time: firstMsg.timestamp, stopReason: firstMsg.stopReason },
-          last: { role: lastMsg.role, time: lastMsg.timestamp, stopReason: lastMsg.stopReason }
-        });
       }
 
       // 清空现有时间线
       const list = document.getElementById('timelineList');
       if (!list) return;
-      list.textContent = ''; // 清空现有内容
+      list.textContent = '';
 
       // 重置统计变量
       tlTasks = 0;
@@ -288,113 +276,75 @@
       const empty = document.getElementById('tlEmpty');
       if (empty) empty.remove();
 
-      // 按时间分组消息（相邻消息在 5 分钟内归为同一任务）
-      const GROUP_GAP_MS = 5 * 60 * 1000; // 5 分钟
+      const timeline = data.timeline || [];
+      const conversations = data.conversations || [];
+      const stats = data.stats || {};
+
+      console.log('[Timeline] Timeline items:', timeline.length, '| Conversations:', conversations.length);
+
+      // 按对话分组时间线项目
+      // 每个用户消息开始一个新的分组
       const groups = [];
       let currentGroup = null;
 
-      console.log('[Timeline] Processing', msgList.length, 'messages');
-
-      let skipCount = { empty: 0, intermediate: 0, toolResult: 0 };
-
-      for (const msg of msgList) {
-        if (!msg || (!msg.content && !msg.text)) {
-          skipCount.empty++;
-          continue;
-        }
-
-        // 确保 timestamp 是数字（可能是字符串或 Date 对象）
-        let timestamp = msg.timestamp || Date.now();
-        if (typeof timestamp === 'string') {
-          // 尝试解析时间字符串
-          timestamp = new Date(timestamp).getTime() || Date.now();
-        } else if (timestamp instanceof Date) {
-          timestamp = timestamp.getTime();
-        }
-        const role = msg.role || 'user';
-
-        // 跳过中间过程的 assistant 消息
-        if (role === 'assistant' && msg.stopReason && msg.stopReason !== 'stop') {
-          skipCount.intermediate++;
-          continue;
-        }
-
-        // 跳过 toolResult（已在 toolCall 中统计）
-        if (role === 'toolResult') {
-          skipCount.toolResult++;
-          continue;
-        }
-
-        console.log('[Timeline] Processing message:', { role, timestamp: new Date(timestamp).toLocaleTimeString(), hasContent: !!msg.content });
-
-        // 检查是否需要新建分组：
-        // 1. 第一个消息
-        // 2. 用户消息且当前分组已经有用户消息（新的对话开始）
-        // 3. 时间间隔超过 5 分钟
-        const needNewGroup = !currentGroup ||
-          (role === 'user' && currentGroup.hasUser) ||
-          (timestamp - currentGroup.endMs) > GROUP_GAP_MS;
-
-        if (needNewGroup) {
+      for (const item of timeline) {
+        // 用户消息开始新分组
+        if (item.type === 'message' && item.subtype === 'user') {
+          if (currentGroup && currentGroup.items.length > 0) {
+            groups.push(currentGroup);
+          }
           currentGroup = {
-            startMs: timestamp,
-            endMs: timestamp,
-            messages: [],
+            startMs: item.timestamp,
+            endMs: item.timestamp,
+            items: [item],
+            hasUser: true,
+            hasAssistant: false,
             tools: 0,
-            tokens: 0,
-            hasUser: false,
-            hasAssistant: false
+            errors: 0,
+            tokens: { input: 0, output: 0, total: 0 }
           };
-          groups.push(currentGroup);
-        }
+        } else if (currentGroup) {
+          // 添加到当前分组
+          currentGroup.items.push(item);
+          currentGroup.endMs = item.timestamp;
 
-        currentGroup.endMs = timestamp;
-        currentGroup.messages.push(msg);
+          if (item.type === 'message' && item.subtype === 'assistant') {
+            currentGroup.hasAssistant = true;
+          } else if (item.type === 'tool') {
+            currentGroup.tools++;
+          } else if (item.type === 'error') {
+            currentGroup.errors++;
+          }
 
-        if (role === 'user') {
-          currentGroup.hasUser = true;
-        } else if (role === 'assistant') {
-          currentGroup.hasAssistant = true;
-        }
-
-        // 统计工具调用
-        const content = msg.content;
-        if (Array.isArray(content)) {
-          for (const item of content) {
-            if (item && (item.type === 'toolCall' || item.type === 'tool_use')) {
-              currentGroup.tools++;
-            }
+          // 累加 tokens
+          if (item.tokens) {
+            currentGroup.tokens.input += item.tokens.input || 0;
+            currentGroup.tokens.output += item.tokens.output || 0;
+            currentGroup.tokens.total += item.tokens.total || 0;
           }
         }
       }
 
-      // 只保留最近的 20 个分组
+      // 添加最后一个分组
+      if (currentGroup && currentGroup.items.length > 0) {
+        groups.push(currentGroup);
+      }
+
+      // 只显示最近 20 个分组
       const recentGroups = groups.slice(-20);
 
-      console.log('[Timeline] Skipped:', skipCount, '| Created', groups.length, 'groups, showing', recentGroups.length);
+      console.log('[Timeline] Created', groups.length, 'groups, showing', recentGroups.length);
 
-      // 显示每个分组的时间范围
-      recentGroups.forEach((g, i) => {
-        console.log('[Timeline] Group', i, ':', new Date(g.startMs).toLocaleTimeString(), '-', new Date(g.endMs).toLocaleTimeString(), '| user:', g.hasUser, 'assistant:', g.hasAssistant);
-      });
-
-      // 为每个分组创建时间线条目（从旧到新，然后反转为最新在上）
-      for (let i = 0; i < recentGroups.length; i++) {
-        const group = recentGroups[i];
-        const isFirst = (i === 0);
-        const isLast = (i === recentGroups.length - 1);
-
-        // 生成标签 - 始终尝试从用户消息中提取摘要
+      // 渲染每个分组
+      for (const group of recentGroups) {
+        // 从用户消息提取标签
+        const userItem = group.items.find(i => i.type === 'message' && i.subtype === 'user');
         let label = '';
-        const userMsg = group.messages.find(m => m.role === 'user');
 
-        if (userMsg) {
-          // 有用户消息，提取摘要
-          const text = extractTextFromContent(userMsg.content);
-          const snippet = text.replace(/[^\w\s.,!?'-]/g, '').trim().slice(0, 40);
-          label = snippet ? '💬 ' + snippet + (text.length > 40 ? '…' : '') : '💬 用户消息';
+        if (userItem && userItem.text) {
+          const snippet = userItem.text.replace(/[^\w\s.,!?'-]/g, '').trim().slice(0, 40);
+          label = snippet ? '💬 ' + snippet + (userItem.text.length > 40 ? '…' : '') : '💬 用户消息';
         } else if (group.hasAssistant) {
-          // 只有 assistant 响应
           label = '✨ Agent 响应';
         } else {
           label = '✨ 活动';
@@ -406,13 +356,13 @@
           startMs: group.startMs,
           lastMs: group.endMs,
           tools: group.tools,
-          errors: 0,
-          tokens: group.tokens,
+          errors: group.errors,
+          tokens: group.tokens.total,
           tags: new Set(group.hasUser ? ['chat'] : []),
           el: null
         };
 
-        // 渲染条目（非活跃状态）
+        // 渲染条目
         const el = document.createElement('div');
         el.className = 'tl-entry';
         tlRenderEntry(el, task, false);
@@ -420,8 +370,10 @@
 
         // 更新统计
         tlTasks++;
-        tlMsgs += group.messages.length;
+        tlMsgs += group.items.filter(i => i.type === 'message').length;
         tlTools += group.tools;
+        tlErrors += group.errors;
+        tlTotalTokens += group.tokens.total;
       }
 
       // 更新统计显示
@@ -434,7 +386,23 @@
       const tlToolsEl = document.getElementById('tlTools');
       if (tlToolsEl) tlToolsEl.textContent = tlTools;
 
-      console.log('[Timeline] Loaded', recentGroups.length, 'timeline entries from history');
+      const tlErrorsEl = document.getElementById('tlErrors');
+      if (tlErrorsEl) tlErrorsEl.textContent = tlErrors;
+
+      const tokenCountEl = document.getElementById('tokenCount');
+      if (tokenCountEl) {
+        tokenCountEl.textContent = tlTotalTokens >= 1000
+          ? (tlTotalTokens / 1000).toFixed(1) + 'k'
+          : tlTotalTokens;
+      }
+
+      console.log('[Timeline] Loaded', recentGroups.length, 'timeline entries | Stats:', {
+        tasks: tlTasks,
+        msgs: tlMsgs,
+        tools: tlTools,
+        errors: tlErrors,
+        tokens: tlTotalTokens
+      });
 
     } catch (err) {
       console.log('[Timeline] Failed to load timeline history:', err.message);

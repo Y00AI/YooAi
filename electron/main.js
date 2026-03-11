@@ -16,6 +16,7 @@ let PORT = PREFERRED_PORT;
 const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(os.homedir(), '.openclaw');
 const WORKSPACE = path.join(OPENCLAW_HOME, 'workspace');
 const MEMORY_DIR = path.join(WORKSPACE, 'memory');
+const SESSIONS_DIR = path.join(OPENCLAW_HOME, 'agents/main/sessions');
 const isDev = process.argv.includes('--dev');
 
 // ── Gateway config ────────────────────────────────────────────────────────────
@@ -47,6 +48,271 @@ function getMemoryFiles() {
     });
   }
   return files;
+}
+
+// ── Timeline data parsing ─────────────────────────────────────────────────────
+function parseTimestamp(ts) {
+  if (!ts) return Date.now();
+  if (typeof ts === 'number') return ts;
+  if (typeof ts === 'string') {
+    const d = new Date(ts);
+    return isNaN(d.getTime()) ? Date.now() : d.getTime();
+  }
+  return Date.now();
+}
+
+function extractTextFromContent(content) {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter(item => item && (item.type === 'text' || typeof item === 'string'))
+      .map(item => item.text || item || '')
+      .join(' ')
+      .slice(0, 200);
+  }
+  return '';
+}
+
+function loadSessionsJson() {
+  try {
+    const sessionsPath = path.join(SESSIONS_DIR, 'sessions.json');
+    if (!fs.existsSync(sessionsPath)) return {};
+    return JSON.parse(fs.readFileSync(sessionsPath, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function loadJsonl(sessionId) {
+  const jsonlPath = path.join(SESSIONS_DIR, `${sessionId}.jsonl`);
+  if (!fs.existsSync(jsonlPath)) return [];
+
+  const records = [];
+  const content = fs.readFileSync(jsonlPath, 'utf8');
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      records.push(JSON.parse(trimmed));
+    } catch {}
+  }
+  return records;
+}
+
+function parseTimelineFromJsonl(records) {
+  const timeline = [];
+
+  for (const record of records) {
+    const recordType = record.type;
+
+    // 任务/会话开始
+    if (recordType === 'session') {
+      timeline.push({
+        type: 'task',
+        subtype: 'session_start',
+        text: '会话开始',
+        timestamp: parseTimestamp(record.timestamp),
+        metadata: { sessionId: record.id, cwd: record.cwd }
+      });
+    }
+    // 消息
+    else if (recordType === 'message') {
+      const msg = record.message || {};
+      const role = msg.role || 'unknown';
+      const content = msg.content || [];
+      const usage = msg.usage || {};
+      const timestamp = parseTimestamp(msg.timestamp);
+
+      // 提取文本
+      const text = extractTextFromContent(content);
+
+      if (role === 'user') {
+        timeline.push({
+          type: 'message',
+          subtype: 'user',
+          text: text.slice(0, 100),
+          timestamp,
+          avatar: 'user',
+          metadata: {}
+        });
+      } else if (role === 'assistant') {
+        // 检查是否有工具调用
+        const toolCalls = Array.isArray(content)
+          ? content.filter(c => c && (c.type === 'toolCall' || c.type === 'tool_use'))
+          : [];
+
+        if (toolCalls.length > 0) {
+          for (const tc of toolCalls) {
+            timeline.push({
+              type: 'tool',
+              subtype: 'call',
+              text: `调用 ${tc.name || tc.tool_name || 'tool'}`,
+              timestamp,
+              avatar: 'assistant',
+              metadata: {
+                toolName: tc.name || tc.tool_name || 'unknown',
+                arguments: tc.input || tc.arguments || tc.args
+              },
+              tokens: {
+                input: usage.input || 0,
+                output: usage.output || 0,
+                total: (usage.input || 0) + (usage.output || 0)
+              }
+            });
+          }
+        } else {
+          // 普通回复
+          timeline.push({
+            type: 'message',
+            subtype: 'assistant',
+            text: text.slice(0, 100),
+            timestamp,
+            avatar: 'assistant',
+            metadata: {},
+            tokens: {
+              input: usage.input || 0,
+              output: usage.output || 0,
+              total: (usage.input || 0) + (usage.output || 0)
+            }
+          });
+        }
+      } else if (role === 'toolResult') {
+        const isError = msg.isError || msg.is_error || false;
+        const toolName = msg.toolName || msg.tool_name || 'unknown';
+
+        timeline.push({
+          type: 'tool',
+          subtype: 'result',
+          text: `${toolName} ${isError ? '失败' : '完成'}`,
+          timestamp,
+          is_error: isError,
+          metadata: { toolName }
+        });
+
+        if (isError) {
+          timeline.push({
+            type: 'error',
+            subtype: 'tool_error',
+            text: `工具错误: ${toolName}`,
+            timestamp,
+            severity: 'error',
+            metadata: { toolName }
+          });
+        }
+      }
+    }
+  }
+
+  return timeline;
+}
+
+function parseConversationsWithTokens(records) {
+  const conversations = [];
+  let currentConv = null;
+  let convId = 0;
+
+  for (const record of records) {
+    if (record.type !== 'message') continue;
+
+    const msg = record.message || {};
+    const role = msg.role;
+    const usage = msg.usage || {};
+    const content = msg.content || [];
+    const timestamp = parseTimestamp(msg.timestamp);
+
+    if (role === 'user') {
+      // 保存上一个对话
+      if (currentConv && currentConv.turns.length > 0) {
+        conversations.push(currentConv);
+      }
+
+      // 开始新对话
+      convId++;
+      const text = extractTextFromContent(content);
+      currentConv = {
+        conversationId: convId,
+        userMessage: text.slice(0, 100),
+        startTime: timestamp,
+        endTime: timestamp,
+        turns: [],
+        totalTokens: { input: 0, output: 0, sum: 0 }
+      };
+    } else if ((role === 'assistant' || role === 'toolResult') && currentConv) {
+      const tokens = {
+        input: usage.input || 0,
+        output: usage.output || 0,
+        total: (usage.input || 0) + (usage.output || 0)
+      };
+
+      currentConv.turns.push({
+        role,
+        timestamp,
+        tokens,
+        tool: role === 'toolResult' ? (msg.toolName || msg.tool_name || 'unknown') : undefined,
+        isError: role === 'toolResult' ? (msg.isError || msg.is_error || false) : undefined
+      });
+
+      currentConv.endTime = timestamp;
+      currentConv.totalTokens.input += tokens.input;
+      currentConv.totalTokens.output += tokens.output;
+      currentConv.totalTokens.sum += tokens.total;
+    }
+  }
+
+  // 保存最后一个对话
+  if (currentConv && currentConv.turns.length > 0) {
+    conversations.push(currentConv);
+  }
+
+  return conversations;
+}
+
+function getTimelineData(sessionKey) {
+  // 加载会话汇总
+  const sessions = loadSessionsJson();
+  const session = sessions[sessionKey] || {};
+
+  const sessionId = session.sessionId;
+  if (!sessionId) {
+    return { error: 'Session not found', sessionKey };
+  }
+
+  // 加载 JSONL 记录
+  const records = loadJsonl(sessionId);
+  const timeline = parseTimelineFromJsonl(records);
+  const conversations = parseConversationsWithTokens(records);
+
+  // 统计数据
+  const stats = {
+    totalConversations: conversations.length,
+    totalMessages: timeline.filter(t => t.type === 'message').length,
+    totalTools: timeline.filter(t => t.type === 'tool').length,
+    totalErrors: timeline.filter(t => t.type === 'error').length,
+    totalTokens: {
+      input: session.inputTokens || 0,
+      output: session.outputTokens || 0,
+      sum: session.totalTokens || 0
+    }
+  };
+
+  return {
+    summary: {
+      sessionKey,
+      sessionId,
+      label: session.label || '未命名会话',
+      model: session.model,
+      updatedAt: parseTimestamp(session.updatedAt),
+      tokens: {
+        input: session.inputTokens || 0,
+        output: session.outputTokens || 0,
+        total: session.totalTokens || 0
+      }
+    },
+    timeline,
+    conversations,
+    stats
+  };
 }
 
 // ── HTTP + WebSocket server ───────────────────────────────────────────────────
@@ -87,6 +353,21 @@ function startBackendServer() {
     if (req.url === '/api/memory') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ files: getMemoryFiles() }));
+    }
+
+    // Timeline API - 从 JSONL 文件获取时间线数据
+    const timelineMatch = req.url.match(/^\/api\/timeline\/(.+)$/);
+    if (timelineMatch) {
+      const sessionKey = decodeURIComponent(timelineMatch[1]);
+      try {
+        const data = getTimelineData(sessionKey);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(data));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message || String(err) }));
+      }
+      return;
     }
 
     let filePath = path.join(__dirname, '../public', req.url === '/' ? 'index.html' : req.url);
