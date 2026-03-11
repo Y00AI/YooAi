@@ -6,5 +6,6 @@ contextBridge.exposeInMainWorld('yooai', {
   minimize: () => ipcRenderer.send('win-minimize'),
   maximize: () => ipcRenderer.send('win-maximize'),
   closeWindow: () => ipcRenderer.send('win-close'),
+  openDevTools: () => ipcRenderer.send('win-devtools'),
   platform: process.platform
 });
