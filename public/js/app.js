@@ -248,7 +248,8 @@
       // 调用后端 API 获取时间线数据
       const response = await fetch(`/api/timeline/${encodeURIComponent(currentSessionKey)}`);
       if (!response.ok) {
-        throw new Error(`API returned ${response.status}`);
+        console.log('[Timeline] API returned', response.status);
+        return;
       }
 
       const data = await response.json();
@@ -261,7 +262,10 @@
 
       // 清空现有时间线
       const list = document.getElementById('timelineList');
-      if (!list) return;
+      if (!list) {
+        console.log('[Timeline] timelineList element not found');
+        return;
+      }
       list.textContent = '';
 
       // 重置统计变量
@@ -288,14 +292,16 @@
       let currentGroup = null;
 
       for (const item of timeline) {
+        if (!item || typeof item !== 'object') continue;
+
         // 用户消息开始新分组
         if (item.type === 'message' && item.subtype === 'user') {
           if (currentGroup && currentGroup.items.length > 0) {
             groups.push(currentGroup);
           }
           currentGroup = {
-            startMs: item.timestamp,
-            endMs: item.timestamp,
+            startMs: item.timestamp || Date.now(),
+            endMs: item.timestamp || Date.now(),
             items: [item],
             hasUser: true,
             hasAssistant: false,
@@ -306,7 +312,7 @@
         } else if (currentGroup) {
           // 添加到当前分组
           currentGroup.items.push(item);
-          currentGroup.endMs = item.timestamp;
+          currentGroup.endMs = item.timestamp || currentGroup.endMs;
 
           if (item.type === 'message' && item.subtype === 'assistant') {
             currentGroup.hasAssistant = true;
@@ -337,87 +343,15 @@
 
       // 渲染每个分组
       for (const group of recentGroups) {
-        // 从用户消息提取标签
-        const userItem = group.items.find(i => i.type === 'message' && i.subtype === 'user');
-        let label = '';
-
-        if (userItem && userItem.text) {
-          let displayText = userItem.text;
-
-          // 先检查是否是心跳/系统消息
-          if (userItem.text.startsWith('Sender (untrusted metadata)') || userItem.text.includes('HEARTBEAT')) {
-            displayText = '心跳检查';
-          } else {
-            // 尝试从 JSON 格式的消息中提取 label
-            const jsonMatch = userItem.text.match(/"label":\s*"([^"]+)"/);
-            if (jsonMatch) {
-              displayText = jsonMatch[1];
-            }
-          }
-
-          // 截取显示文本
-          const snippet = displayText.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim().slice(0, 40);
-          label = snippet ? '💬 ' + snippet + (displayText.length > 40 ? '…' : '') : '💬 用户消息';
-        } else if (group.hasAssistant) {
-          label = '✨ Agent 响应';
-        } else {
-          label = '✨ 活动';
+        try {
+          renderTimelineGroup(list, group);
+        } catch (renderErr) {
+          console.error('[Timeline] Error rendering group:', renderErr);
         }
-
-        // 构建标签集合
-        const tags = new Set();
-        if (group.tools > 0) {
-          tags.add('agent'); // 有工具调用，标记为 AGENT
-        }
-        if (group.hasUser) {
-          tags.add('chat'); // 有用户消息，标记为 CHAT
-        }
-
-        // 创建任务对象
-        const task = {
-          label: label,
-          startMs: group.startMs,
-          lastMs: group.endMs,
-          tools: group.tools,
-          errors: group.errors,
-          tokens: group.tokens.total,
-          tags: tags,
-          el: null
-        };
-
-        // 渲染条目
-        const el = document.createElement('div');
-        el.className = 'tl-entry';
-        tlRenderEntry(el, task, false);
-        list.insertBefore(el, list.firstChild);
-
-        // 更新统计
-        tlTasks++;
-        tlMsgs += group.items.filter(i => i.type === 'message').length;
-        tlTools += group.tools;
-        tlErrors += group.errors;
-        tlTotalTokens += group.tokens.total;
       }
 
       // 更新统计显示
-      const tlTasksEl = document.getElementById('tlTasks');
-      if (tlTasksEl) tlTasksEl.textContent = tlTasks;
-
-      const tlMsgsEl = document.getElementById('tlMsgs');
-      if (tlMsgsEl) tlMsgsEl.textContent = tlMsgs;
-
-      const tlToolsEl = document.getElementById('tlTools');
-      if (tlToolsEl) tlToolsEl.textContent = tlTools;
-
-      const tlErrorsEl = document.getElementById('tlErrors');
-      if (tlErrorsEl) tlErrorsEl.textContent = tlErrors;
-
-      const tokenCountEl = document.getElementById('tokenCount');
-      if (tokenCountEl) {
-        tokenCountEl.textContent = tlTotalTokens >= 1000
-          ? (tlTotalTokens / 1000).toFixed(1) + 'k'
-          : tlTotalTokens;
-      }
+      updateTimelineStats();
 
       console.log('[Timeline] Loaded', recentGroups.length, 'timeline entries | Stats:', {
         tasks: tlTasks,
@@ -428,7 +362,136 @@
       });
 
     } catch (err) {
-      console.log('[Timeline] Failed to load timeline history:', err.message);
+      console.error('[Timeline] Failed to load timeline history:', err.message, err.stack);
+    }
+  }
+
+  /**
+   * 渲染单个时间线分组
+   */
+  function renderTimelineGroup(list, group) {
+    // 从用户消息提取标签
+    const userItem = group.items.find(i => i.type === 'message' && i.subtype === 'user');
+    let label = '';
+
+    // 调试：打印原始用户消息（完整内容）
+    if (userItem && userItem.text) {
+      console.log('[Timeline] 原始用户消息（完整）:', userItem.text);
+    }
+
+    if (userItem && userItem.text) {
+      let displayText = String(userItem.text);
+
+      // 检查是否是心跳消息（以 "Read HEARTBEAT.md" 开头）
+      if (displayText.startsWith('Read HEARTBEAT.md')) {
+        displayText = '心跳检查';
+        console.log('[Timeline] -> 识别为心跳消息');
+      } else {
+        // 尝试提取用户实际输入的内容
+        // 格式：[Wed 2026-03-11 14:26 GMT+8] 用户输入内容
+        // 匹配 [星期 年-月-日 时:分 GMT+时区] 后面的内容
+        const userInputMatch = displayText.match(/\[[A-Za-z]+ \d{4}-\d{2}-\d{2} \d{2}:\d{2} GMT[+-]?\d+\]\s*(.+)$/s);
+        if (userInputMatch && userInputMatch[1]) {
+          // 提取到用户输入，去掉 JSON metadata 部分
+          displayText = userInputMatch[1].trim();
+          console.log('[Timeline] -> 提取用户输入:', displayText.substring(0, 50));
+        } else if (displayText.startsWith('Sender (untrusted metadata)')) {
+          // 如果有 Sender 但没有找到用户输入格式，可能是纯心跳
+          displayText = '心跳检查';
+          console.log('[Timeline] -> Sender 消息但无用户输入，标记为心跳');
+        }
+      }
+
+      // 截取显示文本
+      const snippet = displayText.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim().slice(0, 40);
+      label = snippet ? '💬 ' + snippet + (displayText.length > 40 ? '…' : '') : '💬 用户消息';
+    } else if (group.hasAssistant) {
+      label = '✨ Agent 响应';
+    } else {
+      label = '✨ 活动';
+    }
+
+    console.log('[Timeline] 最终标签:', label);
+
+    // 构建标签集合
+    const tags = new Set();
+    if (group.tools > 0) {
+      tags.add('agent');
+    }
+    if (group.hasUser) {
+      tags.add('chat');
+    }
+
+    // 创建任务对象
+    const task = {
+      label: label,
+      startMs: group.startMs || Date.now(),
+      lastMs: group.endMs || group.startMs || Date.now(),
+      tools: group.tools || 0,
+      errors: group.errors || 0,
+      tokens: (group.tokens && group.tokens.total) || 0,
+      tags: tags,
+      el: null
+    };
+
+    // 渲染条目
+    const el = document.createElement('div');
+    el.className = 'tl-entry';
+    tlRenderEntry(el, task, false);
+    list.insertBefore(el, list.firstChild);
+
+    // 更新统计
+    tlTasks++;
+    tlMsgs += (group.items && group.items.filter(i => i.type === 'message').length) || 0;
+    tlTools += group.tools || 0;
+    tlErrors += group.errors || 0;
+    tlTotalTokens += (group.tokens && group.tokens.total) || 0;
+
+    // 更新统计显示
+    updateTimelineStats();
+  }
+
+  /**
+   * 更新时间线统计显示
+   */
+  function updateTimelineStats() {
+    const tlTasksEl = document.getElementById('tlTasks');
+    if (tlTasksEl) tlTasksEl.textContent = tlTasks;
+
+    const tlMsgsEl = document.getElementById('tlMsgs');
+    if (tlMsgsEl) tlMsgsEl.textContent = tlMsgs;
+
+    const tlToolsEl = document.getElementById('tlTools');
+    if (tlToolsEl) tlToolsEl.textContent = tlTools;
+
+    const tlErrorsEl = document.getElementById('tlErrors');
+    if (tlErrorsEl) tlErrorsEl.textContent = tlErrors;
+
+    // 令牌/任务
+    const tlTokenRateEl = document.getElementById('tlTokenRate');
+    if (tlTokenRateEl) {
+      if (tlTasks > 0) {
+        const averageToken = Math.round(tlTotalTokens / tlTasks);
+        if (averageToken >= 1000) {
+          const k = averageToken / 1000;
+          // 显示为 2.15k, 12.4k 格式
+          tlTokenRateEl.textContent = (k >= 10 ? k.toFixed(1) : k.toFixed(2)) + 'k' || 0;
+        } else {
+          tlTokenRateEl.textContent = tlTotalTokens || 0;
+        }
+      }
+      // tlTokenRateEl.textContent = finailyStr;
+    }
+
+    const tokenCountEl = document.getElementById('tokenCount');
+    if (tokenCountEl) {
+      if (tlTotalTokens >= 1000) {
+        const k = tlTotalTokens / 1000;
+        // 显示为 2.15k, 12.4k 格式
+        tokenCountEl.textContent = (k >= 10 ? k.toFixed(1) : k.toFixed(2)) + 'k';
+      } else {
+        tokenCountEl.textContent = tlTotalTokens;
+      }
     }
   }
 
@@ -1081,7 +1144,13 @@
 
     const el = document.getElementById('tokenCount');
     if (el) {
-      el.textContent = tlTotalTokens >= 1000 ? (tlTotalTokens / 1000).toFixed(1) + 'k' : tlTotalTokens;
+      if (tlTotalTokens >= 1000) {
+        const k = tlTotalTokens / 1000;
+        // 显示为 2.15k, 12.4k 格式
+        el.textContent = (k >= 10 ? k.toFixed(1) : k.toFixed(2)) + 'k';
+      } else {
+        el.textContent = tlTotalTokens;
+      }
       el.classList.remove('token-flash');
       void el.offsetWidth;
       el.classList.add('token-flash');
@@ -1089,7 +1158,7 @@
 
     const tlTokenRateEl = document.getElementById('tlTokenRate');
     if (tlTokenRateEl) {
-      tlTokenRateEl.textContent = tlTasks > 0 ? Math.round(tlTotalTokens / tlTasks) : tlTotalTokens;
+      tlTokenRateEl.textContent = tlTasks > 0 ? Math.round(tlTotalTokens / tlTasks) : 0;
     }
   }
 

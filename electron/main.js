@@ -68,8 +68,8 @@ function extractTextFromContent(content) {
     return content
       .filter(item => item && (item.type === 'text' || typeof item === 'string'))
       .map(item => item.text || item || '')
-      .join(' ')
-      .slice(0, 200);
+      .join(' ');
+    // 不截断，返回完整内容
   }
   return '';
 }
@@ -131,7 +131,7 @@ function parseTimelineFromJsonl(records) {
         timeline.push({
           type: 'message',
           subtype: 'user',
-          text: text.slice(0, 100),
+          text: text,  // 不截断，返回完整内容
           timestamp,
           avatar: 'user',
           metadata: {}
