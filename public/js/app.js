@@ -260,6 +260,17 @@
         return;
       }
 
+      // 显示消息列表范围
+      if (msgList.length > 0) {
+        const firstMsg = msgList[0];
+        const lastMsg = msgList[msgList.length - 1];
+        console.log('[Timeline] Message range:', {
+          total: msgList.length,
+          first: { role: firstMsg.role, time: firstMsg.timestamp, stopReason: firstMsg.stopReason },
+          last: { role: lastMsg.role, time: lastMsg.timestamp, stopReason: lastMsg.stopReason }
+        });
+      }
+
       // 清空现有时间线
       const list = document.getElementById('timelineList');
       if (!list) return;
@@ -284,9 +295,11 @@
 
       console.log('[Timeline] Processing', msgList.length, 'messages');
 
+      let skipCount = { empty: 0, intermediate: 0, toolResult: 0 };
+
       for (const msg of msgList) {
         if (!msg || (!msg.content && !msg.text)) {
-          console.log('[Timeline] Skipping empty message');
+          skipCount.empty++;
           continue;
         }
 
@@ -302,20 +315,27 @@
 
         // 跳过中间过程的 assistant 消息
         if (role === 'assistant' && msg.stopReason && msg.stopReason !== 'stop') {
-          console.log('[Timeline] Skipping intermediate assistant message, stopReason:', msg.stopReason);
+          skipCount.intermediate++;
           continue;
         }
 
         // 跳过 toolResult（已在 toolCall 中统计）
         if (role === 'toolResult') {
-          console.log('[Timeline] Skipping toolResult');
+          skipCount.toolResult++;
           continue;
         }
 
         console.log('[Timeline] Processing message:', { role, timestamp: new Date(timestamp).toLocaleTimeString(), hasContent: !!msg.content });
 
-        // 检查是否需要新建分组
-        if (!currentGroup || (timestamp - currentGroup.endMs) > GROUP_GAP_MS) {
+        // 检查是否需要新建分组：
+        // 1. 第一个消息
+        // 2. 用户消息且当前分组已经有用户消息（新的对话开始）
+        // 3. 时间间隔超过 5 分钟
+        const needNewGroup = !currentGroup ||
+          (role === 'user' && currentGroup.hasUser) ||
+          (timestamp - currentGroup.endMs) > GROUP_GAP_MS;
+
+        if (needNewGroup) {
           currentGroup = {
             startMs: timestamp,
             endMs: timestamp,
@@ -351,7 +371,12 @@
       // 只保留最近的 20 个分组
       const recentGroups = groups.slice(-20);
 
-      console.log('[Timeline] Created', groups.length, 'groups, showing', recentGroups.length);
+      console.log('[Timeline] Skipped:', skipCount, '| Created', groups.length, 'groups, showing', recentGroups.length);
+
+      // 显示每个分组的时间范围
+      recentGroups.forEach((g, i) => {
+        console.log('[Timeline] Group', i, ':', new Date(g.startMs).toLocaleTimeString(), '-', new Date(g.endMs).toLocaleTimeString(), '| user:', g.hasUser, 'assistant:', g.hasAssistant);
+      });
 
       // 为每个分组创建时间线条目（从旧到新，然后反转为最新在上）
       for (let i = 0; i < recentGroups.length; i++) {
