@@ -1,72 +1,125 @@
 # 🦀 YooAI — OpenClaw Agent Dashboard
 
-A real-time visual dashboard for monitoring your OpenClaw AI agent. Watch its mood, soul animation, brain memory, and activity timeline live as it works.
-Perfect to monitor activity while the agent works, you see how hard it's working, how fustrated it is, visual active nureal memory triggers and saves and more. Easy setup. Standalone client. 
+OpenClaw AI Agent 的实时可视化仪表盘。监控 Agent 的情绪、灵魂动画、大脑记忆和活动时间线。
 
-[![D62919D7-72AE-436A-A822-8541AC69A585.png](https://i.postimg.cc/PfFD2KYc/D62919D7-72AE-436A-A822-8541AC69A585.png)](https://postimg.cc/3WmWwXLC)
-
----
-
-## ✨ Features
-
-- 🧠 **Agent Mood** — live mood bars reacting to agent activity
-- [![A66997F6-C9AD-4E2D-A943-440D3299BC3D.png](https://i.postimg.cc/T3vp4swQ/A66997F6-C9AD-4E2D-A943-440D3299BC3D.png)](https://postimg.cc/mtVLc87F)
-- 🌀 **Agent Soul** — animated particle visualizer with 7 mood states(Sleeping, Thinking, Focused, Excited, Frustrated, Vibing, and Exhausted)
-- [![26625DE4-428B-4AD4-8A5E-784ABE7927A7.png](https://i.postimg.cc/W4WZC7x3/26625DE4-428B-4AD4-8A5E-784ABE7927A7.png)](https://postimg.cc/2qW3BnkR)
-- ⚡ **Activity Timeline** — scrolling log of tasks, messages, tool calls and tokens
-- [![B61D130F-F956-45D0-AA51-99AE6C46D773.png](https://i.postimg.cc/5NdChyKN/B61D130F-F956-45D0-AA51-99AE6C46D773.png)](https://postimg.cc/Th01mdXZ)
-- 🔮 **Brain Memory** — live neural network animation reacting to agent events(Blue light is a recall, yellow active, pink new)with linking animation
-- [![68605D6E-A654-4560-9EF4-D78EEFF709D8.png](https://i.postimg.cc/jSvnnXxn/68605D6E-A654-4560-9EF4-D78EEFF709D8.png)](https://postimg.cc/bZDwK12q)
-- 🪙 Token counter
-- [![D8A3E724-2929-4229-8EE3-D991361B60C0.png](https://i.postimg.cc/tTnsfGhD/D8A3E724-2929-4229-8EE3-D991361B60C0.png)](https://postimg.cc/S2qQ251z)
-- 📊 Progress bar
-- [![0132C6BD-DF67-405F-B54F-738D36366293.png](https://i.postimg.cc/1zfXn1Yy/0132C6BD-DF67-405F-B54F-738D36366293.png)](https://postimg.cc/8FgN99SY)
+> **原项目**: [Y00AI/YooAI](https://github.com/Y00AI/YooAI)
+>
+> 本项目 Fork 自原项目，并在此基础上进行了功能扩展和优化。
 
 ---
 
-## 🚀 Setup
+## ✨ 功能特性
 
-### Requirements
-- [Node.js](https://nodejs.org) (v18 or higher)
-- [OpenClaw](https://github.com/your-openclaw-link) running locally
+### 原版功能
 
-### Install & Run
+- 🧠 **Agent 情绪** — 实时情绪条，响应 Agent 活动
+- 🌀 **Agent 灵魂** — 7 种情绪状态的粒子动画（休眠、思考、专注、兴奋、沮丧、沉浸、疲惫）
+- ⚡ **活动时间线** — 任务、消息、工具调用和 Token 的滚动日志
+- 🔮 **大脑记忆** — 实时神经网络动画（蓝色=回忆、黄色=活跃、粉色=新建）
+- 🪙 **Token 计数器**
+- 📊 **进度条**
+
+### 🆕 v2 新增功能
+
+- 💬 **聊天面板 v2** — 全新设计的聊天界面，支持左右分栏布局
+  - 实时消息流显示
+  - 代码拆分，模块化架构
+  - 流式消息渲染
+  - 日期分隔符
+  - 消息分组
+
+- 🛠️ **工具调用可视化** — 展示 Agent 调用的工具及执行状态
+  - 不同工具类型显示不同颜色
+  - 实时状态获取
+
+- 📜 **聊天历史加载** — 自动加载并展示历史对话记录
+
+- 🌐 **中文界面支持** — 完整的中文本地化
+
+- 🔧 **Gateway 协议优化** — 修复并完善与 OpenClaw Gateway 的通信协议
+
+---
+
+## 🚀 安装与运行
+
+### 环境要求
+- [Bun](https://bun.sh) 或 Node.js (v18+)
+- 本地运行的 [OpenClaw](https://github.com/your-openclaw-link)
+
+### 安装步骤
 
 ```bash
-# Clone the repo
-git clone https://github.com/Y00AI/YooAI.git
-cd YooAI
+# 克隆仓库
+git clone https://github.com/chinabaijunjie/YooAi.git
+cd YooAi
 
-# Install dependencies
+# 安装依赖
+bun install
+# 或
 npm install
 
-# Start
-npm start
+# 开发模式（带 DevTools）
+bun run dev
+
+# 生产模式
+bun run start
+
+# 构建应用
+bun run build        # 当前平台
+bun run build:mac    # macOS DMG
+bun run build:win    # Windows NSIS
+bun run build:linux  # Linux AppImage
 ```
-The dashboard will launch as a desktop window and auto-connect to your local OpenClaw gateway.
 
-For newbies: Extract zip, right click inside the folder, open terminal, type "npm install" first, then "npm start" 
-to relaunch again, same process but skip the install and just "npm start" make sure the directory is the correct folder by opening terminal within the folder.
-Your gateway for openclaw must be active first. Find your gateway key in your config.json in openclaw, paste it in the config menu in YooAI. 
+### 连接配置
 
-### Connect
+1. 启动应用后点击 **配置**
+2. 粘贴你的 OpenClaw Gateway Token
+3. 点击 **连接**
 
-1. Click **Configure**
-2. Paste your OpenClaw gateway token
-3. Hit **Connect**
+Token 可在 OpenClaw 的 `config.json` 文件中找到。
 
 ---
 
-## 📄 License
+## 📁 项目结构
 
-Licensed under **CC BY-ND 4.0** — free to use and share with attribution, no modifications permitted.
+```
+├── electron/
+│   └── main.js          # Electron 主进程，HTTP + WebSocket 服务
+├── public/
+│   ├── index.html       # 主页面，三栏布局
+│   ├── css/
+│   │   ├── main.css     # 核心样式，玻璃态效果
+│   │   └── chat.css     # 聊天面板样式
+│   └── js/
+│       ├── app.js       # 主逻辑，事件路由
+│       ├── gateway.js   # WebSocket 连接管理
+│       ├── chat.js      # 聊天面板控制
+│       ├── chat-normalizer.js  # 消息标准化
+│       ├── chat-tool-cards.js  # 工具卡片组件
+│       ├── canvas-bg.js       # 背景动画
+│       ├── canvas-brain.js    # 神经网络可视化
+│       └── canvas-cyborg.js   # 灵魂粒子动画
+└── package.json
+```
 
 ---
 
-## ☕ Support
+## 📄 许可证
 
-If you find this useful, consider buying me a coffee!
+原项目基于 **CC BY-ND 4.0** 许可证。
+
+---
+
+## 🙏 致谢
+
+- 感谢 [Y00AI](https://github.com/Y00AI) 创建的原项目
+- 感谢 OpenClaw 团队
+
+---
+
+## ☕ 支持原作者
+
+如果你觉得原项目有用，可以考虑请原作者喝杯咖啡！
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?style=for-the-badge&logo=buy-me-a-coffee)](https://buymeacoffee.com/yooai)
-
-<a href="https://www.buymeacoffee.com/YooAI" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
