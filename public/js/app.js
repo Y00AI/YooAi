@@ -342,9 +342,18 @@
         let label = '';
 
         if (userItem && userItem.text) {
-          // 保留中文、英文、数字和基本标点
-          const snippet = userItem.text.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim().slice(0, 40);
-          label = snippet ? '💬 ' + snippet + (userItem.text.length > 40 ? '…' : '') : '💬 用户消息';
+          // 尝试从 JSON 格式的消息中提取 label
+          let displayText = userItem.text;
+          const jsonMatch = userItem.text.match(/"label":\s*"([^"]+)"/);
+          if (jsonMatch) {
+            displayText = jsonMatch[1];
+          } else if (userItem.text.startsWith('Sender (untrusted metadata)') || userItem.text.includes('HEARTBEAT')) {
+            displayText = '心跳检查';
+          }
+
+          // 截取显示文本
+          const snippet = displayText.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim().slice(0, 40);
+          label = snippet ? '💬 ' + snippet + (displayText.length > 40 ? '…' : '') : '💬 用户消息';
         } else if (group.hasAssistant) {
           label = '✨ Agent 响应';
         } else {
