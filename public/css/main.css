@@ -646,12 +646,12 @@ body.has-titlebar .container { padding-top: 56px; }
 .tl-icon { font-size:20px; line-height:1; flex-shrink:0; margin-top:2px; }
 .tl-body { flex:1; min-width:0; }
 .tl-title { font-size:12px; font-weight:700; color:rgba(255,255,255,0.9); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.tl-meta { display:flex; gap:8px; margin-top:3px; flex-wrap:wrap; }
-.tl-tag { font-size:9px; font-weight:800; padding:1px 6px; border-radius:20px; letter-spacing:0.5px; }
-.tl-tag.chat  { background:rgba(64,224,255,0.15); color:#40e0ff; }
-.tl-tag.tool  { background:rgba(249,228,154,0.15); color:#f9e49a; }
-.tl-tag.error { background:rgba(249,100,80,0.15);  color:#f96450; }
-.tl-tag.agent { background:rgba(160,240,160,0.15); color:#a0f0a0; }
+.tl-meta { display:flex; gap:6px; margin-top:3px; flex-wrap:wrap; align-items:center; }
+.tl-tag { font-size:8px; font-weight:900; padding:2px 7px; border-radius:20px; letter-spacing:0.8px; text-transform:uppercase; }
+.tl-tag.agent { background:rgba(160,240,160,0.2); color:#a0f0a0; border:1px solid rgba(160,240,160,0.3); }
+.tl-tag.chat  { background:rgba(64,224,255,0.15); color:#40e0ff; border:1px solid rgba(64,224,255,0.25); }
+.tl-tag.tool  { background:rgba(249,228,154,0.15); color:#f9e49a; border:1px solid rgba(249,228,154,0.25); }
+.tl-tag.error { background:rgba(249,100,80,0.15); color:#f96450; border:1px solid rgba(249,100,80,0.25); }
 .tl-time { font-size:9px; color:rgba(255,255,255,0.3); font-family:monospace; margin-top:2px; }
 .tl-right { display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0; }
 .tl-dur { font-size:10px; font-weight:700; color:rgba(255,255,255,0.4); font-family:monospace; }

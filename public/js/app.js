@@ -1,6 +1,6 @@
 /**
  * @file app.js
- * @description YooAI 主应用逻辑模块 - 负责整体应用状态管理、事件路由、情绪系统、时间线渲染
+ * @description YooAI 主应用逻辑模块 - 负责整体应用初始化、UI组件、全局功能
  * @module YooAI/App
  * @version 2.0.0
  * @author YooAI Team
@@ -10,10 +10,18 @@
  * - Chat (chat.js) - 聊天面板管理
  * - ChatStatus (chat-status.js) - 状态显示
  * - ChatToolCards (chat-tool-cards.js) - 工具卡片组件
+ * - MoodSystem (core/mood-system.js) - 情绪系统
+ * - EventRouter (core/event-router.js) - 事件路由
+ * - SessionManager (core/session-manager.js) - 会话管理
  *
  * @exports
  * - window.YooAI.init() - 初始化应用
- * - window.YooAI.onEvent() - 触发情绪事件
+ * - window.YooAI.onEvent() - 触发情绪事件（代理到MoodSystem）
+ * - window.openModal() - 打开设置模态框
+ * - window.closeModal() - 关闭设置模态框
+ * - window.saveAndConnect() - 保存令牌并连接
+ * - window.clearTimeline() - 清空时间线
+ * - window.loadMemory() - 加载记忆文件
  *
  * @example
  * // 初始化应用
@@ -23,13 +31,13 @@
  * YooAI.onEvent({ vibe: +5, brain: -0.5 });
  *
  * @architecture
- * 数据流: Gateway → App.js → Chat.js → DOM
+ * 数据流: Gateway → EventRouter → Chat.js → DOM
  *
- * 主要职责:
- * 1. 状态管理 - 情绪状态(vibe/brain/chaos/energy)、任务进度
- * 2. 事件处理 - 网关事件分发、智能体生命周期管理
- * 3. 时间线渲染 - 活动历史展示、统计信息
- * 4. 会话管理 - Token使用量、模型信息
+ * 模块职责划分:
+ * - app.js: 应用初始化、UI组件、全局功能
+ * - MoodSystem: 情绪状态管理和渲染
+ * - EventRouter: 网关事件分发和处理
+ * - SessionManager: 会话状态管理
  */
 
 (function() {
@@ -40,76 +48,38 @@
   let logs = [];
   let msgCount = 0;
 
-  // Mood state (all 0-100)
-  let moodAct = 10;
-  let moodVibe = 50;
-  let moodBrain = 50;
-  let moodFocus = 80;
-  let moodEnergy = 100;
-
-  // Task progress
-  let taskProgressStart = 0;
-  let taskProgressDone = false;
-  const TASK_DURATION_MS = 120000;
-
-  // Event tracking
-  let eventBurst = 0;
-  let lastEventTime = 0;
-  let agentBusy = false;
-
-  // Timeline stats
-  let tlTasks = 0, tlMsgs = 0, tlTools = 0, tlErrors = 0;
-  let tlTotalTokens = 0, tlSessionTokens = 0;
-  let tlSessionStart = null;
-  let tlCurrentTask = null;
-  let tlTimerInterval = null;
-
-  // Message deduplication - track runIds that have been streamed
-  const streamedRunIds = new Set(); // 已经通过 agent 流式显示的 runId
-  const PROCESSED_RUNID_MAX = 100; // Keep last 100 runIds
-
-  const TASK_DEBOUNCE = 5000;
-
-  // Session state
-  let currentSessionKey = 'agent:main:main'; // 当前活跃的 session key
-  let lastStatusResult = null; // 缓存最后的 status 结果
-  let statusPollInterval = null;
-
   // === INIT ===
   function init() {
     initTitlebar();
     initFloatingBits();
-    initMoodTick();
-    initGatewayHandlers();
-    initChatHandlers();
     initDevTools();
-    initStatusPolling();
+
+    // 初始化 Core 模块
+    if (typeof MoodSystem !== 'undefined') MoodSystem.init();
+    if (typeof EventRouter !== 'undefined') EventRouter.init();
+    if (typeof SessionManager !== 'undefined') SessionManager.init();
+
+    initChatHandlers();
 
     // Initialize background canvas (cyborg and brain auto-init)
     if (typeof initBg === 'function') initBg('bgCanvas');
 
     // Auto-connect after short delay
-    setTimeout(() => Gateway.connect(), 700);
+    setTimeout(() => {
+      if (typeof Gateway !== 'undefined') Gateway.connect();
+    }, 700);
   }
 
-  // === STATUS POLLING ===
-  function initStatusPolling() {
-    // Poll session status every 30 seconds
-    statusPollInterval = setInterval(() => {
-      if (Gateway.isConnected()) {
-        fetchSessionStatus();
-      }
-    }, 30000);
-
-    // Also poll on gateway connect
-    Gateway.onMessage((msg) => {
-      if (msg.type === 'gateway.connected') {
-        // Wait a bit for auth to complete
-        setTimeout(() => fetchSessionStatus(), 2000);
-        // Load chat history (will also load timeline history)
-        setTimeout(() => loadChatHistory(), 1500);
-      }
-    });
+  // === CHAT HANDLERS ===
+  function initChatHandlers() {
+    // Chat will be initialized when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        if (typeof Chat !== 'undefined') Chat.init();
+      });
+    } else {
+      if (typeof Chat !== 'undefined') Chat.init();
+    }
   }
 
   /**
@@ -117,8 +87,12 @@
    */
   async function loadChatHistory() {
     try {
+      const sessionKey = typeof SessionManager !== 'undefined'
+        ? SessionManager.getCurrentSessionKey()
+        : 'agent:main:main';
+
       const result = await Gateway.request('chat.history', {
-        sessionKey: currentSessionKey,
+        sessionKey: sessionKey,
         limit: 100
       });
 
@@ -256,8 +230,12 @@
    */
   async function loadTimelineHistory() {
     try {
+      const sessionKey = typeof SessionManager !== 'undefined'
+        ? SessionManager.getCurrentSessionKey()
+        : 'agent:main:main';
+
       // 调用后端 API 获取时间线数据
-      const response = await fetch(`/api/timeline/${encodeURIComponent(currentSessionKey)}`);
+      const response = await fetch(`/api/timeline/${encodeURIComponent(sessionKey)}`);
       if (!response.ok) {
         return;
       }
@@ -276,13 +254,10 @@
       }
       list.textContent = '';
 
-      // 重置统计变量
-      tlTasks = 0;
-      tlMsgs = 0;
-      tlTools = 0;
-      tlErrors = 0;
-      tlTotalTokens = 0;
-      tlCurrentTask = null;
+      // 重置统计变量（通过 EventRouter）
+      if (typeof EventRouter !== 'undefined') {
+        EventRouter.resetStats();
+      }
 
       // 移除空状态提示
       const empty = document.getElementById('tlEmpty');
@@ -354,8 +329,37 @@
         }
       }
 
-      // 更新统计显示
-      updateTimelineStats();
+      // 更新统计显示（从 API 返回的 stats 更新）
+      const tlTasksEl = document.getElementById('tlTasks');
+      const tlMsgsEl = document.getElementById('tlMsgs');
+      const tlToolsEl = document.getElementById('tlTools');
+      const tlErrorsEl = document.getElementById('tlErrors');
+      const tlTokenRateEl = document.getElementById('tlTokenRate');
+      const tokenCountEl = document.getElementById('tokenCount');
+
+      // 使用 API 返回的统计数据
+      if (tlTasksEl) tlTasksEl.textContent = stats.totalConversations || 0;
+      if (tlMsgsEl) tlMsgsEl.textContent = stats.totalMessages || 0;
+      if (tlToolsEl) tlToolsEl.textContent = stats.totalTools || 0;
+      if (tlErrorsEl) tlErrorsEl.textContent = stats.totalErrors || 0;
+
+      // 更新 Token 计数
+      const totalTokens = stats.totalTokens?.sum || 0;
+      if (tokenCountEl) {
+        if (totalTokens >= 1000) {
+          const k = totalTokens / 1000;
+          tokenCountEl.textContent = (k >= 10 ? k.toFixed(1) : k.toFixed(2)) + 'k';
+        } else {
+          tokenCountEl.textContent = totalTokens;
+        }
+      }
+
+      // 更新令牌率（每任务平均 Token）
+      if (tlTokenRateEl) {
+        tlTokenRateEl.textContent = stats.totalConversations > 0
+          ? Math.round(totalTokens / stats.totalConversations)
+          : 0;
+      }
 
     } catch (err) {
       console.error('[Timeline] Failed to load timeline history:', err.message, err.stack);
@@ -399,154 +403,121 @@
       label = '✨ 活动';
     }
 
-    // 构建标签集合
-    const tags = new Set();
-    if (group.tools > 0) {
-      tags.add('agent');
-    }
-    if (group.hasUser) {
-      tags.add('chat');
-    }
+    const dur = formatDuration(group.endMs - group.startMs);
+    const time = new Date(group.startMs).toTimeString().slice(0, 8);
 
-    // 创建任务对象
-    const task = {
-      label: label,
-      startMs: group.startMs || Date.now(),
-      lastMs: group.endMs || group.startMs || Date.now(),
-      tools: group.tools || 0,
-      errors: group.errors || 0,
-      tokens: (group.tokens && group.tokens.total) || 0,
-      tags: tags,
-      el: null
-    };
-
-    // 渲染条目
+    // Create entry element
     const el = document.createElement('div');
     el.className = 'tl-entry';
-    tlRenderEntry(el, task, false);
+
+    // Icon
+    const iconEl = document.createElement('div');
+    iconEl.className = 'tl-icon';
+    iconEl.textContent = group.errors > 0 ? '⚠️' : group.tools > 0 ? '🤖' : '💬';
+    el.appendChild(iconEl);
+
+    // Body
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'tl-body';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'tl-title';
+    titleEl.textContent = label;
+    bodyEl.appendChild(titleEl);
+
+    const metaEl = document.createElement('div');
+    metaEl.className = 'tl-meta';
+
+    // 根据是否有工具调用显示不同的标签
+    if (group.tools > 0) {
+      // 有工具调用 → Agent 类型：显示 AGENT + CHAT + TOOL 标签
+      const agentTag = document.createElement('span');
+      agentTag.className = 'tl-tag agent';
+      agentTag.textContent = 'AGENT';
+      metaEl.appendChild(agentTag);
+
+      const chatTag = document.createElement('span');
+      chatTag.className = 'tl-tag chat';
+      chatTag.textContent = 'CHAT';
+      metaEl.appendChild(chatTag);
+
+      const toolTag = document.createElement('span');
+      toolTag.className = 'tl-tag tool';
+      toolTag.textContent = group.tools + ' TOOL' + (group.tools > 1 ? 'S' : '');
+      metaEl.appendChild(toolTag);
+    } else {
+      // 无工具调用 → Chat 类型：只显示 CHAT 标签
+      const chatTag = document.createElement('span');
+      chatTag.className = 'tl-tag chat';
+      chatTag.textContent = 'CHAT';
+      metaEl.appendChild(chatTag);
+    }
+
+    // Add error count
+    if (group.errors > 0) {
+      const errEl = document.createElement('span');
+      errEl.className = 'tl-tag error';
+      errEl.textContent = group.errors + ' ERR';
+      metaEl.appendChild(errEl);
+    }
+
+    bodyEl.appendChild(metaEl);
+
+    const timeEl = document.createElement('div');
+    timeEl.className = 'tl-time';
+    timeEl.textContent = time;
+    bodyEl.appendChild(timeEl);
+
+    el.appendChild(bodyEl);
+
+    // Right side
+    const rightEl = document.createElement('div');
+    rightEl.className = 'tl-right';
+
+    const durEl = document.createElement('div');
+    durEl.className = 'tl-dur';
+    durEl.textContent = dur;
+    rightEl.appendChild(durEl);
+
+    if (group.tokens.total > 0) {
+      const tokEl = document.createElement('span');
+      tokEl.className = 'tl-tokens';
+      tokEl.textContent = '+' + (group.tokens.total >= 1000 ? (group.tokens.total / 1000).toFixed(1) + 'k' : group.tokens.total) + ' tok';
+      rightEl.appendChild(tokEl);
+    }
+
+    el.appendChild(rightEl);
+
     list.insertBefore(el, list.firstChild);
+  }
 
-    // 更新统计
-    tlTasks++;
-    tlMsgs += (group.items && group.items.filter(i => i.type === 'message').length) || 0;
-    tlTools += group.tools || 0;
-    tlErrors += group.errors || 0;
-    tlTotalTokens += (group.tokens && group.tokens.total) || 0;
-
-    // 更新统计显示
-    updateTimelineStats();
+  /**
+   * 格式化持续时间
+   */
+  function formatDuration(ms) {
+    if (ms < 1000) return ms + 'ms';
+    if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+    return Math.floor(ms / 60000) + 'm ' + (Math.floor(ms / 1000) % 60) + 's';
   }
 
   /**
    * 更新时间线统计显示
    */
   function updateTimelineStats() {
-    const tlTasksEl = document.getElementById('tlTasks');
-    if (tlTasksEl) tlTasksEl.textContent = tlTasks;
+    // 从 EventRouter 获取统计并更新 UI
+    if (typeof EventRouter !== 'undefined') {
+      const stats = EventRouter.getStats();
+      const tlTasksEl = document.getElementById('tlTasks');
+      const tlMsgsEl = document.getElementById('tlMsgs');
+      const tlToolsEl = document.getElementById('tlTools');
+      const tlErrorsEl = document.getElementById('tlErrors');
+      const tlTokenRateEl = document.getElementById('tlTokenRate');
 
-    const tlMsgsEl = document.getElementById('tlMsgs');
-    if (tlMsgsEl) tlMsgsEl.textContent = tlMsgs;
-
-    const tlToolsEl = document.getElementById('tlTools');
-    if (tlToolsEl) tlToolsEl.textContent = tlTools;
-
-    const tlErrorsEl = document.getElementById('tlErrors');
-    if (tlErrorsEl) tlErrorsEl.textContent = tlErrors;
-
-    // 令牌/任务
-    const tlTokenRateEl = document.getElementById('tlTokenRate');
-    if (tlTokenRateEl) {
-      if (tlTasks > 0) {
-        const averageToken = Math.round(tlTotalTokens / tlTasks);
-        if (averageToken >= 1000) {
-          const k = averageToken / 1000;
-          // 显示为 2.15k, 12.4k 格式
-          tlTokenRateEl.textContent = (k >= 10 ? k.toFixed(1) : k.toFixed(2)) + 'k' || 0;
-        } else {
-          tlTokenRateEl.textContent = tlTotalTokens || 0;
-        }
-      }
-      // tlTokenRateEl.textContent = finailyStr;
-    }
-
-    const tokenCountEl = document.getElementById('tokenCount');
-    if (tokenCountEl) {
-      if (tlTotalTokens >= 1000) {
-        const k = tlTotalTokens / 1000;
-        // 显示为 2.15k, 12.4k 格式
-        tokenCountEl.textContent = (k >= 10 ? k.toFixed(1) : k.toFixed(2)) + 'k';
-      } else {
-        tokenCountEl.textContent = tlTotalTokens;
-      }
-    }
-  }
-
-  /**
-   * 从消息内容中提取文本
-   */
-  function extractTextFromContent(content) {
-    if (!content) return '';
-    if (typeof content === 'string') return content;
-    if (Array.isArray(content)) {
-      return content
-        .filter(item => item && (item.type === 'text' || typeof item === 'string'))
-        .map(item => item.text || item || '')
-        .join('');
-    }
-    return '';
-  }
-
-  async function fetchSessionStatus() {
-    try {
-      const result = await Gateway.request('status', {});
-      updateSessionUI(result);
-    } catch (err) {
-      // 静默处理状态获取失败
-    }
-  }
-
-  function updateSessionUI(result) {
-    if (!result) return;
-
-    // 缓存结果
-    lastStatusResult = result;
-
-    // 从 result.sessions.recent 数组获取当前会话的 token 信息
-    const sessions = result.sessions?.recent || [];
-    // 找到匹配当前 sessionKey 的会话，或者取第一个
-    const current = sessions.find(s => s.key === currentSessionKey) || sessions[0];
-
-    if (current && typeof ChatStatus !== 'undefined') {
-      // 字段名是 totalTokens，不是 used
-      const used = current.totalTokens || 0;
-      const max = current.contextTokens || 204800;
-      const percent = current.percentUsed || 0;
-
-      ChatStatus.updateTokens({
-        used: used,
-        total: max,
-        percentUsed: percent
-      });
-
-      // 更新模型信息
-      if (current.model) {
-        ChatStatus.updateModel(current.model);
-      }
-    }
-  }
-
-  function updateSessionFromKey(sessionKey) {
-    if (!sessionKey) return;
-
-    currentSessionKey = sessionKey;
-
-    // Parse sessionKey format: "agent:main:main" or "agent:main:cron:news"
-    const parts = sessionKey.split(':');
-    const agentId = parts[1] || 'main';
-    const sessionId = parts.slice(2).join(':') || 'main';
-
-    if (typeof ChatStatus !== 'undefined') {
-      ChatStatus.updateSession(sessionId);
+      if (tlTasksEl) tlTasksEl.textContent = stats.tlTasks;
+      if (tlMsgsEl) tlMsgsEl.textContent = stats.tlMsgs;
+      if (tlToolsEl) tlToolsEl.textContent = stats.tlTools;
+      if (tlErrorsEl) tlErrorsEl.textContent = stats.tlErrors;
+      if (tlTokenRateEl) tlTokenRateEl.textContent = stats.tlTasks > 0 ? Math.round(stats.tlTotalTokens / stats.tlTasks) : 0;
     }
   }
 
@@ -593,672 +564,6 @@
         bEl.appendChild(b);
       }
     });
-  }
-
-  // === TASK PROGRESS ===
-  function renderTaskProgress() {
-    const bar = document.getElementById('brainBar');
-    if (!bar) return;
-
-    if (taskProgressDone) {
-      bar.style.width = '100%';
-      bar.style.background = 'linear-gradient(90deg,#a0f0f0,#b2ead6,#a0ffc8)';
-      return;
-    }
-    if (!taskProgressStart) {
-      bar.style.width = '0%';
-      bar.style.background = 'linear-gradient(90deg,#a0f0f0,#b2ead6,#7de8e8)';
-      return;
-    }
-
-    const elapsed = Date.now() - taskProgressStart;
-    const pct = Math.min(95, (elapsed / TASK_DURATION_MS) * 100);
-    bar.style.width = pct + '%';
-    bar.style.background = 'linear-gradient(90deg,#a0f0f0,#b2ead6,#7de8e8)';
-  }
-
-  setInterval(() => {
-    if (taskProgressStart && !taskProgressDone) renderTaskProgress();
-  }, 500);
-
-  // === MOOD RENDERING ===
-  function clamp(v, mn, mx) {
-    return Math.max(mn, Math.min(mx, v));
-  }
-
-  function renderMood() {
-    const actBar = document.getElementById('actBar');
-    const vibeBar = document.getElementById('vibeBar');
-    const chaosBar = document.getElementById('chaosBar');
-    const energyBar = document.getElementById('energyBar');
-
-    if (actBar) actBar.style.width = moodAct + '%';
-    if (vibeBar) vibeBar.style.width = moodVibe + '%';
-    if (chaosBar) chaosBar.style.width = moodFocus + '%';
-    if (energyBar) energyBar.style.width = moodEnergy + '%';
-
-    let emoji, name, sub;
-    if (!agentBusy && moodAct < 20) {
-      emoji = '😴'; name = '休眠中'; sub = '等待任务中~';
-    } else if (!agentBusy) {
-      emoji = '😌'; name = '休息中'; sub = '任务完成~';
-    } else if (moodEnergy < 5) {
-      emoji = '🪫'; name = '精疲力竭'; sub = '能量耗尽...';
-    } else if (moodFocus < 12) {
-      emoji = '🤯'; name = '不知所措'; sub = '任务太重了...';
-    } else if (moodVibe < 25) {
-      emoji = '😤'; name = '艰难中'; sub = '情况有点棘手...';
-    } else if (moodBrain > 80) {
-      emoji = '🤔'; name = '深思中'; sub = '深度推理模式...';
-    } else if (moodAct > 80) {
-      emoji = '🎯'; name = '专注中'; sub = '全神贯注！';
-    } else if (moodVibe > 75) {
-      emoji = '✨'; name = '状态极佳'; sub = '感觉很好！';
-    } else {
-      emoji = '🤔'; name = '思考中...'; sub = '正在处理...';
-    }
-
-    const moodEmoji = document.getElementById('moodEmoji');
-    const moodName = document.getElementById('moodName');
-    const moodSub = document.getElementById('moodSub');
-
-    if (moodEmoji) moodEmoji.textContent = emoji;
-    if (moodName) moodName.textContent = name;
-    if (moodSub) moodSub.textContent = sub;
-
-    // Update cyborg mood
-    if (window._setCyborgMood) {
-      window._soulEnergy = moodEnergy;
-      if (!agentBusy && moodEnergy < 5) window._setCyborgMood('exhausted');
-      else if (!agentBusy) window._setCyborgMood('sleeping');
-      else if (moodFocus < 12) window._setCyborgMood('frustrated');
-      else if (moodVibe > 75) window._setCyborgMood('vibing');
-      else if (moodBrain > 75) window._setCyborgMood('thinking');
-      else if (moodAct > 75) window._setCyborgMood('focused');
-      else if (moodVibe > 55) window._setCyborgMood('excited');
-      else window._setCyborgMood('thinking');
-    }
-  }
-
-  function onEvent(deltas = {}) {
-    const now = Date.now();
-    const wasIdle = !agentBusy;
-    lastEventTime = now;
-    eventBurst++;
-    agentBusy = true;
-
-    moodAct = clamp(moodAct + 18, 10, 100);
-
-    if (wasIdle) { moodBrain = 100; moodFocus = 80; }
-    if (deltas.brain != null) moodBrain = clamp(moodBrain + deltas.brain, 0, 100);
-    if (deltas.vibe != null) moodVibe = clamp(moodVibe + deltas.vibe, 0, 100);
-    if (deltas.chaos != null) moodFocus = clamp(moodFocus - deltas.chaos, 0, 100);
-
-    moodEnergy = clamp(moodEnergy - 0.3, 0, 100);
-    renderMood();
-  }
-
-  function initMoodTick() {
-    setInterval(() => {
-      if (!Gateway.isConnected()) return;
-
-      const now = Date.now();
-      const idleMs = now - lastEventTime;
-      const IDLE_THRESHOLD = 8000;
-
-      if (idleMs > IDLE_THRESHOLD && agentBusy) {
-        tlCommitTask();
-        agentBusy = false;
-        moodAct = clamp(moodAct - 40, 10, 100);
-        moodFocus = clamp(moodFocus + 20, 0, 100);
-        moodBrain = clamp(moodBrain - 20, 20, 100);
-        moodVibe = clamp(moodVibe - 10, 40, 100);
-        renderMood();
-        return;
-      }
-
-      if (agentBusy) {
-        moodVibe = clamp(moodVibe + 1, 0, 100);
-        moodBrain = clamp(moodBrain - 0.4, 0, 100);
-        moodEnergy = clamp(moodEnergy - 0.4, 0, 100);
-        moodFocus = clamp(moodFocus - 0.2, 0, 100);
-        renderMood();
-        return;
-      }
-
-      if (!agentBusy) {
-        moodAct = clamp(moodAct - 3, 10, 100);
-        moodVibe = clamp(moodVibe + (moodVibe < 50 ? 1 : -1), 40, 60);
-        moodBrain = clamp(moodBrain + 1, 20, 100);
-        moodFocus = clamp(moodFocus + 1, 0, 100);
-        if (moodAct < 20) moodEnergy = clamp(moodEnergy + 3, 0, 100);
-        renderMood();
-      }
-    }, 500);
-  }
-
-  // === GATEWAY HANDLERS ===
-  function initGatewayHandlers() {
-    Gateway.onMessage((msg) => {
-      const ev = msg.type;
-      const p = msg.payload;
-
-      if (ev === 'tick') {
-        updateStats(p.snapshot || p);
-        return;
-      }
-
-      if (ev === 'log') {
-        const lvl = p.level || 'info';
-        addLog(lvl === 'error' ? 'error' : lvl === 'warn' ? 'warn' : 'info', 'LOG', p.message || JSON.stringify(p).slice(0, 100));
-        return;
-      }
-
-      if (ev === 'health') {
-        updateStats(p);
-        addLog('success', 'WS', '网关健康 ✓');
-        return;
-      }
-
-      if (ev === 'session.status' || ev === 'status') {
-        updateStats(p);
-        return;
-      }
-
-      if (ev === 'notification') {
-        addLog('info', 'NOTIF', p.title || p.message || '通知');
-        return;
-      }
-
-      if (ev === 'agent.status') {
-        updateStats(p);
-        addLog('info', 'AGENT', '状态: ' + (p.status || '?'));
-        return;
-      }
-
-      if (ev === 'telegram.message') {
-        addLog('info', 'TG', '来自 ' + (p.from || '用户') + ' 的消息');
-        return;
-      }
-
-      if (ev === 'agent' || ev === 'agent.stream' || ev === 'agent.message') {
-        updateStats(p);
-        tlAddTokens(1);
-        tlAddTag('agent');
-
-        // Handle Agent event with lifecycle + assistant streams
-        const payload = p.payload || p;
-        const stream = payload.stream;
-        const data = payload.data || p.data || p;
-
-        // Lifecycle: start → show thinking indicator
-        if (stream === 'lifecycle' && data.phase === 'start') {
-          Chat.showTyping();
-          if (typeof ChatStatus !== 'undefined') ChatStatus.updateStatus('thinking');
-          tlStartTask('Agent 处理中 · ' + new Date().toTimeString().slice(0, 5));
-          onEvent({ brain: +0.5, chaos: -2 });
-          return;
-        }
-
-        // Lifecycle: end → hide thinking (don't end stream, let chat:final handle it)
-        if (stream === 'lifecycle' && data.phase === 'end') {
-          Chat.hideTyping();
-          // 不在这里结束流，让 chat: final 来处理
-          if (typeof ChatStatus !== 'undefined') ChatStatus.updateStatus('idle');
-          onEvent({ brain: -0.3, vibe: +3 });
-
-          // 对话结束后更新 token 使用情况
-          setTimeout(() => fetchSessionStatus(), 500);
-          return;
-        }
-
-        // Assistant stream: delta for streaming text
-        // 只有明确是 assistant stream 且有 delta 内容时才处理
-        if (stream === 'assistant') {
-          const runId = payload.runId || p.runId || '';
-
-          Chat.hideTyping();
-          if (typeof ChatStatus !== 'undefined') ChatStatus.updateStatus('streaming');
-
-          // 检查是否是工具调用/结果
-          const dataType = data.type;
-          if (dataType === 'tool_call') {
-            Chat.appendToolCall({
-              name: data.name,
-              args: data.args,
-              status: 'running'
-            });
-            onEvent({ vibe: -2, brain: -1, chaos: +8 });
-            return;
-          }
-
-          if (dataType === 'tool_result') {
-            Chat.appendToolResult({
-              name: data.name,
-              text: data.text,
-              success: !data.is_error
-            });
-            onEvent({ vibe: data.is_error ? -8 : +4, brain: -1, chaos: data.is_error ? +15 : -6 });
-            return;
-          }
-
-          // 使用 delta（增量）而不是 text（累积）
-          let raw = data.delta || '';
-          if (!raw) {
-            raw = data.text || data.content || '';
-          }
-          if (typeof raw !== 'string') raw = JSON.stringify(raw);
-
-          if (raw) {
-            Chat.appendToStream(raw);
-            
-            // 记录这个 runId 已经通过流式显示
-            if (runId) {
-              streamedRunIds.add(runId);
-              if (streamedRunIds.size > PROCESSED_RUNID_MAX) {
-                const arr = Array.from(streamedRunIds);
-                arr.slice(0, arr.length - PROCESSED_RUNID_MAX).forEach(id => streamedRunIds.delete(id));
-              }
-            }
-          }
-
-          // Accumulate for timeline label
-          if (tlCurrentTask) {
-            tlCurrentTask._buf = (tlCurrentTask._buf || '') + raw;
-            const snippet = tlCurrentTask._buf.replace(/[^\w\s.,!?'-]/g, '').trim();
-            if (snippet.length > 5) {
-              tlCurrentTask.label = '💬 ' + snippet.slice(0, 45) + (snippet.length > 45 ? '…' : '');
-              if (tlCurrentTask.el) tlRenderEntry(tlCurrentTask.el, tlCurrentTask, true);
-            }
-          }
-
-          onEvent({ brain: -0.3, chaos: +1 });
-          return;
-        }
-
-        return;
-      }
-
-      if (ev === 'chat' || ev === 'chat.message') {
-        updateStats(p);
-        const sessionId = p.sessionKey || p.runId || p.key || '';
-        const runId = p.runId || '';
-        const state = p.state || '';
-
-        // Update session info from sessionKey
-        if (p.sessionKey) {
-          updateSessionFromKey(p.sessionKey);
-        }
-
-        // 更新统计
-        const parts = sessionId.split(':');
-        const agentName = parts[1] || parts[0] || 'agent';
-        if (state === 'final') {
-          tlStartTask('会话: ' + agentName + ' · ' + new Date().toTimeString().slice(0, 5));
-          tlAddTag('chat');
-          tlMsgs++;
-          const tlMsgsEl = document.getElementById('tlMsgs');
-          if (tlMsgsEl) tlMsgsEl.textContent = tlMsgs;
-        }
-        onEvent({ vibe: +5, chaos: +8 });
-        if (window._brainFire) window._brainFire(null, 5);
-
-        Chat.hideTyping();
-
-        // 检查是否已经通过 agent 事件流式显示
-        const alreadyStreamed = runId && streamedRunIds.has(runId);
-
-        if (state === 'final') {
-          if (alreadyStreamed) {
-            // 已通过 agent 流式显示，只结束流
-            Chat.endStream();
-            // 清除标记，避免影响后续消息
-            streamedRunIds.delete(runId);
-          } else {
-            // 没有流式显示，添加完整消息
-            const msg = p.message;
-            if (msg && (msg.content || msg.text)) {
-              let content = msg.content;
-              if (Array.isArray(content)) {
-                content = content.map(c => c.text || '').join('');
-              } else if (typeof content !== 'string') {
-                content = msg.text || JSON.stringify(content);
-              }
-
-              if (content) {
-                Chat.addMessage({
-                  role: msg.role || 'assistant',
-                  content: content,
-                  timestamp: msg.timestamp || Date.now()
-                });
-              }
-            }
-          }
-        }
-        // delta 状态的消息忽略（由 agent 事件处理）
-
-        return;
-      }
-
-      if (ev === 'agent.message' || ev === 'message') {
-        updateStats(p);
-        msgCount++;
-        const msEl = document.getElementById('sMessages');
-        if (msEl) msEl.textContent = msgCount;
-
-        // End stream and add complete message to chat
-        Chat.endStream();
-        if (p.content || p.message) {
-          Chat.addMessage({
-            role: 'assistant',
-            content: p.content || p.message,
-            timestamp: Date.now()
-          });
-        }
-
-        addLog('agent', 'AGENT', (p.content || p.message || '').slice(0, 120));
-        onEvent({ vibe: +3, brain: -0.5, chaos: +2 });
-        return;
-      }
-
-      if (ev === 'tool.start' || ev === 'tool_start') {
-        tlAddTool();
-        tlAddTag('tool');
-        if (!tlCurrentTask) tlStartTask('工具: ' + (p.tool || p.name || '?'));
-        onEvent({ vibe: -2, brain: -1, chaos: +8 });
-        if (window._brainFire) window._brainFire(null, 6);
-        return;
-      }
-
-      if (ev === 'tool.end' || ev === 'tool.result' || ev === 'tool_end') {
-        const ok = !p.error;
-        addLog(ok ? 'success' : 'error', 'TOOL', ok ? '✓ 完成' : '✗ ' + (p.error || '失败'));
-        onEvent({ vibe: ok ? +4 : -8, brain: -1, chaos: ok ? -6 : +15 });
-        if (window._brainFire) window._brainFire(null, ok ? 5 : 3);
-        return;
-      }
-
-      if (ev === 'error' || (p && p.error)) {
-        tlAddError();
-        onEvent({ vibe: -10, brain: -1, chaos: +18 });
-        return;
-      }
-
-      // Unknown event
-      addLog('info', (ev + '     ').slice(0, 5).toUpperCase(), JSON.stringify(p || {}).slice(0, 100));
-    });
-  }
-
-  // === CHAT HANDLERS ===
-  function initChatHandlers() {
-    // Chat will be initialized when DOM is ready
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => Chat.init());
-    } else {
-      Chat.init();
-    }
-  }
-
-  // === STATS UPDATE ===
-  function updateStats(d) {
-    const s = (id, v) => {
-      const el = document.getElementById(id);
-      if (el && v != null && v !== '' && v !== '—') el.textContent = v;
-    };
-
-    if (d.sessions && d.sessions.length > 0) {
-      const active = d.sessions.find(s => s.active) || d.sessions[d.sessions.length - 1];
-      if (active) {
-        if (active.model) s('sModel', active.model.includes('/') ? active.model.split('/').pop() : active.model);
-        const sid = active.key || active.id || '';
-        if (sid) s('sSession', sid.length > 16 ? sid.slice(0, 16) + '…' : sid);
-        if (active.totalTokens != null && active.contextTokens != null) {
-          s('sContext', Math.round(active.totalTokens / active.contextTokens * 100) + '%');
-        }
-        if (active.messageCount != null) s('sMessages', active.messageCount);
-        if (active.cost != null) {
-          const sMessages = document.getElementById('sMessages');
-          if (sMessages) sMessages.title = '$' + active.cost.toFixed(4);
-        }
-      }
-    }
-
-    const model = d.model || d.modelId || d.modelName || '';
-    if (model) s('sModel', model.includes('/') ? model.split('/').pop() : model);
-    s('sVersion', d.version || d.openclaw_version || d.gatewayVersion);
-    const sid = d.sessionId || d.session || d.sessionKey || d.runId || d.key || '';
-    if (sid) s('sSession', sid.length > 16 ? sid.slice(0, 16) + '…' : sid);
-    if (d.reasoning != null) s('sReasoning', d.reasoning ? 'ON ✓' : 'OFF');
-    if (d.extendedThinking != null) s('sReasoning', d.extendedThinking ? 'ON ✓' : 'OFF');
-  }
-
-  // === LOGGING ===
-  function addLog(type, tag, msg) {
-    // 生产环境不打印日志
-  }
-
-  // === TIMELINE ===
-  function tlStartSession() {
-    if (tlSessionStart) return;
-    tlSessionStart = Date.now();
-    tlTimerInterval = setInterval(() => {
-      if (!tlSessionStart) return;
-      const s = Math.floor((Date.now() - tlSessionStart) / 1000);
-      const m = Math.floor(s / 60), sec = s % 60;
-      const timerEl = document.getElementById('sessionTimer');
-      if (timerEl) {
-        timerEl.textContent = String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
-      }
-    }, 1000);
-  }
-
-  function tlStartTask(label) {
-    const now = Date.now();
-    if (tlCurrentTask && (now - tlCurrentTask.lastMs) < TASK_DEBOUNCE) {
-      tlCurrentTask.lastMs = now;
-      return;
-    }
-    if (tlCurrentTask) tlCommitTask();
-
-    tlCurrentTask = {
-      label: label || '处理中...',
-      startMs: now,
-      lastMs: now,
-      tools: 0,
-      errors: 0,
-      tokens: 0,
-      tags: new Set(),
-      el: null
-    };
-
-    taskProgressStart = now;
-    taskProgressDone = false;
-    renderTaskProgress();
-    tlStartSession();
-
-    const el = tlAddEntry(tlCurrentTask, true);
-    tlCurrentTask.el = el;
-  }
-
-  function tlAddTag(tag) {
-    if (tlCurrentTask) {
-      tlCurrentTask.tags.add(tag);
-      tlCurrentTask.lastMs = Date.now();
-    }
-  }
-
-  function tlAddTool() {
-    if (tlCurrentTask) {
-      tlCurrentTask.tools++;
-      tlCurrentTask.lastMs = Date.now();
-      tlTools++;
-      const tlToolsEl = document.getElementById('tlTools');
-      if (tlToolsEl) tlToolsEl.textContent = tlTools;
-    }
-  }
-
-  function tlAddError() {
-    if (tlCurrentTask) {
-      tlCurrentTask.errors++;
-      tlCurrentTask.lastMs = Date.now();
-      tlErrors++;
-      const tlErrorsEl = document.getElementById('tlErrors');
-      if (tlErrorsEl) tlErrorsEl.textContent = tlErrors;
-    }
-  }
-
-  function tlAddTokens(n) {
-    tlTotalTokens += n;
-    tlSessionTokens += n;
-    if (tlCurrentTask) tlCurrentTask.tokens += n;
-
-    const el = document.getElementById('tokenCount');
-    if (el) {
-      if (tlTotalTokens >= 1000) {
-        const k = tlTotalTokens / 1000;
-        // 显示为 2.15k, 12.4k 格式
-        el.textContent = (k >= 10 ? k.toFixed(1) : k.toFixed(2)) + 'k';
-      } else {
-        el.textContent = tlTotalTokens;
-      }
-      el.classList.remove('token-flash');
-      void el.offsetWidth;
-      el.classList.add('token-flash');
-    }
-
-    const tlTokenRateEl = document.getElementById('tlTokenRate');
-    if (tlTokenRateEl) {
-      tlTokenRateEl.textContent = tlTasks > 0 ? Math.round(tlTotalTokens / tlTasks) : 0;
-    }
-  }
-
-  function tlCommitTask() {
-    if (!tlCurrentTask) return;
-    const t = tlCurrentTask;
-    tlCurrentTask = null;
-    tlTasks++;
-    taskProgressDone = true;
-    renderTaskProgress();
-
-    setTimeout(() => {
-      taskProgressDone = false;
-      taskProgressStart = 0;
-      renderTaskProgress();
-    }, 2500);
-
-    const tlTasksEl = document.getElementById('tlTasks');
-    if (tlTasksEl) tlTasksEl.textContent = tlTasks;
-
-    const tlTokenRateEl = document.getElementById('tlTokenRate');
-    if (tlTokenRateEl) tlTokenRateEl.textContent = Math.round(tlTotalTokens / tlTasks);
-
-    if (t.el) {
-      t.el.classList.remove('tl-active');
-      tlRenderEntry(t.el, t, false);
-    }
-  }
-
-  function tlAddEntry(task, active) {
-    const empty = document.getElementById('tlEmpty');
-    if (empty) empty.remove();
-
-    const list = document.getElementById('timelineList');
-    if (!list) return null;
-
-    const el = document.createElement('div');
-    el.className = 'tl-entry' + (active ? ' tl-active' : '');
-    tlRenderEntry(el, task, active);
-    list.insertBefore(el, list.firstChild);
-
-    while (list.children.length > 50) list.removeChild(list.lastChild);
-
-    return el;
-  }
-
-  function tlRenderEntry(el, task, active) {
-    // 活跃任务显示圆点，历史任务显示实际持续时间
-    const dur = active ? '●' : tlFmtDur((task.lastMs || task.startMs) - task.startMs);
-    // 图标选择：错误 > 有工具调用(Agent) > 聊天 > 默认
-    const icon = task.errors > 0 ? '⚠️' : task.tags.has('agent') ? '🤖' : task.tags.has('chat') ? '💬' : '✨';
-    const time = new Date(task.startMs).toTimeString().slice(0, 8);
-
-    // Clear and rebuild using DOM methods
-    el.textContent = '';
-
-    // Icon
-    const iconEl = document.createElement('div');
-    iconEl.className = 'tl-icon';
-    iconEl.textContent = icon;
-    el.appendChild(iconEl);
-
-    // Body
-    const bodyEl = document.createElement('div');
-    bodyEl.className = 'tl-body';
-
-    const titleEl = document.createElement('div');
-    titleEl.className = 'tl-title';
-    titleEl.textContent = task.label;
-    bodyEl.appendChild(titleEl);
-
-    const metaEl = document.createElement('div');
-    metaEl.className = 'tl-meta';
-
-    // Add tags
-    for (const tag of task.tags) {
-      const tagEl = document.createElement('span');
-      tagEl.className = 'tl-tag ' + tag;
-      tagEl.textContent = tag.toUpperCase();
-      metaEl.appendChild(tagEl);
-    }
-
-    // Add tool count
-    if (task.tools > 0) {
-      const toolEl = document.createElement('span');
-      toolEl.className = 'tl-tag tool';
-      toolEl.textContent = task.tools + ' tool' + (task.tools > 1 ? 's' : '');
-      metaEl.appendChild(toolEl);
-    }
-
-    // Add error count
-    if (task.errors > 0) {
-      const errEl = document.createElement('span');
-      errEl.className = 'tl-tag error';
-      errEl.textContent = task.errors + ' err';
-      metaEl.appendChild(errEl);
-    }
-
-    bodyEl.appendChild(metaEl);
-
-    const timeEl = document.createElement('div');
-    timeEl.className = 'tl-time';
-    timeEl.textContent = time;
-    bodyEl.appendChild(timeEl);
-
-    el.appendChild(bodyEl);
-
-    // Right side
-    const rightEl = document.createElement('div');
-    rightEl.className = 'tl-right';
-
-    const durEl = document.createElement('div');
-    durEl.className = 'tl-dur';
-    durEl.textContent = dur;
-    rightEl.appendChild(durEl);
-
-    if (task.tokens > 0) {
-      const tokEl = document.createElement('span');
-      tokEl.className = 'tl-tokens';
-      tokEl.textContent = '+' + (task.tokens >= 1000 ? (task.tokens / 1000).toFixed(1) + 'k' : task.tokens) + ' tok';
-      rightEl.appendChild(tokEl);
-    }
-
-    el.appendChild(rightEl);
-  }
-
-  function tlFmtDur(ms) {
-    if (ms < 1000) return ms + 'ms';
-    if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
-    return Math.floor(ms / 60000) + 'm ' + (Math.floor(ms / 1000) % 60) + 's';
   }
 
   // === GLOBAL FUNCTIONS ===
@@ -1329,7 +634,7 @@
           tokenStatus.style.color = '#a0ffc8';
         }
         closeModal();
-        Gateway.connect();
+        if (typeof Gateway !== 'undefined') Gateway.connect();
       } catch (e) {
         if (saveMsg) {
           saveMsg.textContent = '✗ ' + e.message;
@@ -1343,7 +648,7 @@
       }
     } else {
       closeModal();
-      Gateway.connect();
+      if (typeof Gateway !== 'undefined') Gateway.connect();
     }
   };
 
@@ -1373,19 +678,10 @@
       list.appendChild(emptyEl);
     }
 
-    tlTasks = 0;
-    tlMsgs = 0;
-    tlTools = 0;
-    tlErrors = 0;
-    tlTotalTokens = 0;
-    tlSessionTokens = 0;
-    tlSessionStart = null;
-    tlCurrentTask = null;
-    taskProgressStart = 0;
-    taskProgressDone = false;
-    renderTaskProgress();
-
-    if (tlTimerInterval) clearInterval(tlTimerInterval);
+    // 重置 EventRouter 统计
+    if (typeof EventRouter !== 'undefined') {
+      EventRouter.resetStats();
+    }
 
     ['tlTasks', 'tlMsgs', 'tlTools', 'tlErrors', 'tlTokenRate', 'tokenCount'].forEach(id => {
       const el = document.getElementById(id);
@@ -1511,6 +807,32 @@
       });
     }
   };
+
+  // 代理 onEvent 到 MoodSystem
+  window.onEvent = function(deltas) {
+    if (typeof MoodSystem !== 'undefined') {
+      MoodSystem.onEvent(deltas);
+    }
+  };
+
+  // 暴露 YooAI 命名空间
+  window.YooAI = {
+    init,
+    onEvent: window.onEvent,
+    loadChatHistory,
+    loadTimelineHistory
+  };
+
+  // === GATEWAY CONNECT HANDLER ===
+  // 监听网关连接事件，加载聊天历史
+  if (typeof Gateway !== 'undefined') {
+    Gateway.onMessage((msg) => {
+      if (msg.type === 'gateway.connected') {
+        // Wait a bit for auth to complete
+        setTimeout(() => loadChatHistory(), 1500);
+      }
+    });
+  }
 
   // === INIT ON DOM READY ===
   if (document.readyState === 'loading') {
