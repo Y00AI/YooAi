@@ -909,9 +909,31 @@
 }
 
 .foldable-card-chevron {
-  font-size: 10px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.4);
   transition: transform 0.2s;
+  margin-left: 4px;
+}
+
+/* 状态指示点 */
+.foldable-card-dots {
+  display: flex;
+  gap: 3px;
+  margin-left: auto;
+  padding-right: 4px;
+}
+
+.foldable-card-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transition: all 0.2s ease;
+}
+
+.foldable-card-dot.active {
+  background: var(--dot-active-color, #78909c);
+  box-shadow: 0 0 6px var(--dot-active-color, #78909c);
 }
 
 .foldable-card[data-state="partial"] .foldable-card-chevron,

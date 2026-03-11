@@ -119,8 +119,21 @@ const ChatToolCards = (function() {
     chevron.className = 'foldable-card-chevron';
     chevron.textContent = '›';
 
+    // 创建三个状态指示点
+    const stateDots = document.createElement('div');
+    stateDots.className = 'foldable-card-dots';
+    stateDots.style.setProperty('--dot-active-color', config.color);
+
+    for (let i = 0; i < 3; i++) {
+      const dot = document.createElement('span');
+      dot.className = 'foldable-card-dot';
+      if (i === 0) dot.classList.add('active');
+      stateDots.appendChild(dot);
+    }
+
     header.appendChild(icon);
     header.appendChild(label);
+    header.appendChild(stateDots);
     header.appendChild(chevron);
 
     // 创建内容区域
@@ -170,6 +183,13 @@ const ChatToolCards = (function() {
     const contentEl = card.querySelector('.foldable-card-content');
     const expandBtn = card.querySelector('.foldable-card-expand');
     const contentInner = card.querySelector('.foldable-card-content-inner');
+    const dots = card.querySelectorAll('.foldable-card-dot');
+
+    // 更新状态指示点
+    const stateIndex = { collapsed: 0, partial: 1, full: 2 };
+    dots.forEach((dot, i) => {
+      dot.classList.toggle('active', i === stateIndex[state]);
+    });
 
     if (state === 'collapsed') {
       contentEl.style.display = 'none';
