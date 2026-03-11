@@ -1,6 +1,46 @@
 /**
- * YooAI Gateway - WebSocket Connection Manager
- * Handles connection to OpenClaw gateway through YooAI proxy
+ * @file gateway.js
+ * @description YooAI 网关连接管理器 - 处理与 OpenClaw 网关的 WebSocket 通信
+ * @module YooAI/Gateway
+ * @version 2.0.0
+ * @author YooAI Team
+ *
+ * @dependencies
+ * - 无外部依赖，纯浏览器 WebSocket API
+ *
+ * @exports
+ * - Gateway.connect() - 建立连接
+ * - Gateway.disconnect() - 断开连接
+ * - Gateway.send(data) - 发送数据
+ * - Gateway.request(method, params, timeout) - 发送请求并等待响应
+ * - Gateway.onMessage(handler) - 注册消息处理器
+ * - Gateway.isConnected() - 检查连接状态
+ * - Gateway.saveTokenAndConnect(token) - 保存认证令牌并连接
+ *
+ * @example
+ * // 连接到网关
+ * Gateway.connect();
+ *
+ * // 发送请求
+ * const result = await Gateway.request('chat.history', { sessionKey: 'main', limit: 100 });
+ *
+ * // 监听消息
+ * Gateway.onMessage((msg) => {
+ *   if (msg.type === 'agent') {
+ *     // 处理智能体事件
+ *   }
+ * });
+ *
+ * @protocol
+ * 消息格式:
+ * - 请求: { type: 'req', id: string, method: string, params: object }
+ * - 响应: { type: 'res', id: string, ok: boolean, payload: object }
+ * - 事件: { type: 'event', event: string, payload: object }
+ *
+ * 支持的方法:
+ * - chat.history - 获取聊天历史
+ * - chat.send - 发送聊天消息
+ * - status - 获取会话状态
  */
 
 const Gateway = (function() {

@@ -1,6 +1,43 @@
 /**
- * YooAI Chat - Message Utilities
- * 消息工具函数：日期分隔线、消息分组、输入指示器
+ * @file chat-message-utils.js
+ * @description YooAI 消息工具函数 - 日期分隔线、消息分组、输入指示器等 UI 工具
+ * @module YooAI/ChatMessageUtils
+ * @version 2.0.0
+ * @author YooAI Team
+ *
+ * @dependencies
+ * - 无外部依赖
+ *
+ * @exports
+ * - ChatMessageUtils.formatDateLabel(ts) - 格式化日期标签 (今天/昨天/M/D)
+ * - ChatMessageUtils.createDateDivider(timestamp) - 创建日期分割线元素
+ * - ChatMessageUtils.getDateDividerIfNeeded(messages, newMsg) - 判断是否需要日期分割线
+ * - ChatMessageUtils.createTypingIndicator() - 创建输入指示器
+ * - ChatMessageUtils.showTypingIndicator() - 显示输入指示器
+ * - ChatMessageUtils.hideTypingIndicator() - 隐藏输入指示器
+ * - ChatMessageUtils.groupMessagesByInterval(messages, gapMs) - 按时间间隔分组消息
+ *
+ * @example
+ * // 创建日期分割线
+ * const divider = ChatMessageUtils.createDateDivider(Date.now());
+ * container.appendChild(divider);
+ *
+ * // 显示输入指示器
+ * ChatMessageUtils.showTypingIndicator();
+ *
+ * // 检查是否需要日期分割线
+ * if (ChatMessageUtils.getDateDividerIfNeeded(previousMessages, newMessage)) {
+ *   container.appendChild(ChatMessageUtils.createDateDivider(newMessage.timestamp));
+ * }
+ *
+ * @architecture
+ * 日期分割线规则:
+ * - 同一天: 不显示分割线
+ * - 不同天: 显示 "今天" / "昨天" / "3/10" 格式
+ *
+ * 输入指示器:
+ * - 三个动画圆点，表示对方正在输入
+ * - 自动插入到消息容器末尾
  */
 
 const ChatMessageUtils = (function() {

@@ -1,6 +1,47 @@
 /**
- * YooAI Chat - Chat Panel Manager
- * Handles chat UI and message rendering
+ * @file chat.js
+ * @description YooAI 聊天面板管理器 - 处理聊天消息的发送、接收、流式输出和渲染
+ * @module YooAI/Chat
+ * @version 2.0.0
+ * @author YooAI Team
+ *
+ * @dependencies
+ * - Gateway (gateway.js) - 消息发送
+ * - ChatNormalizer (chat-normalizer.js) - 消息格式化
+ * - ChatMessageUtils (chat-message-utils.js) - UI工具
+ * - ChatToolCards (chat-tool-cards.js) - 工具卡片
+ * - marked (外部库) - Markdown 解析
+ * - DOMPurify (外部库) - HTML 消毒
+ *
+ * @exports
+ * - Chat.init() - 初始化聊天面板
+ * - Chat.addMessage(msg) - 添加完整消息
+ * - Chat.appendToStream(content) - 追加流式内容
+ * - Chat.endStream() - 结束流式消息
+ * - Chat.appendToolCall(options) - 添加工具调用卡片
+ * - Chat.appendToolResult(options) - 添加工具结果卡片
+ * - Chat.appendElement(el) - 追加 DOM 元素
+ * - Chat.showTyping() - 显示输入指示器
+ * - Chat.hideTyping() - 隐藏输入指示器
+ * - Chat.clear() - 清空消息
+ *
+ * @example
+ * // 添加用户消息
+ * Chat.addMessage({ role: 'user', content: 'Hello', timestamp: Date.now() });
+ *
+ * // 流式追加助手回复
+ * Chat.appendToStream('Hello, ');
+ * Chat.appendToStream('how can I help?');
+ * Chat.endStream();
+ *
+ * // 添加工具调用
+ * Chat.appendToolCall({ name: 'read', args: { file_path: '/path/to/file' } });
+ *
+ * @architecture
+ * 消息流程:
+ * 1. 用户输入 → sendMessage() → Gateway.send()
+ * 2. Gateway 事件 → app.js 分发 → Chat.appendToStream() / addMessage()
+ * 3. 流式消息 → currentStreamingMsg 缓存 → DOM 更新
  */
 
 const Chat = (function() {

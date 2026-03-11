@@ -1,6 +1,46 @@
 /**
- * YooAI Chat - Message Normalizer
- * 消息标准化处理，转换为统一的 ChatItem 格式
+ * @file chat-normalizer.js
+ * @description YooAI 消息标准化器 - 将各种格式的消息转换为统一的 ChatItem 格式
+ * @module YooAI/ChatNormalizer
+ * @version 2.0.0
+ * @author YooAI Team
+ *
+ * @dependencies
+ * - ChatMessageUtils (chat-message-utils.js) - UI工具
+ * - ChatToolCards (chat-tool-cards.js) - 工具卡片
+ *
+ * @exports
+ * - ChatNormalizer.normalizeMessage(msg, index) - 标准化单条消息
+ * - ChatNormalizer.normalizeContent(content) - 标准化内容数组
+ * - ChatNormalizer.renderItem(item, options) - 渲染 ChatItem
+ * - ChatNormalizer.CHAT_ITEM_TYPES - ChatItem 类型枚举
+ *
+ * @example
+ * // 标准化消息
+ * const chatItem = ChatNormalizer.normalizeMessage({
+ *   role: 'assistant',
+ *   content: [{ type: 'text', text: 'Hello' }],
+ *   timestamp: Date.now()
+ * }, 0);
+ *
+ * // 渲染 ChatItem
+ * const el = ChatNormalizer.renderItem(chatItem, {
+ *   markdownRenderer: marked.parse,
+ *   sanitizeHtml: DOMPurify.sanitize
+ * });
+ *
+ * @architecture
+ * ChatItem 类型:
+ * - message: 完整消息 (user/assistant)
+ * - divider: 日期分割线
+ * - stream: 流式消息
+ * - reading-indicator: 输入指示器
+ *
+ * 内容类型 (MessageContentItem):
+ * - text: 纯文本
+ * - toolCall: 工具调用
+ * - toolResult: 工具结果
+ * - thinking: 思考过程
  */
 
 const ChatNormalizer = (function() {

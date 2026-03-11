@@ -1,12 +1,41 @@
 /**
- * Cyborg Soul Canvas Animation
- * Extracted from index.html for modular use
+ * @file canvas-cyborg.js
+ * @description YooAI 智能体灵魂粒子动画 - 基于情绪状态的粒子系统动画
+ * @module YooAI/CanvasCyborg
+ * @version 2.0.0
+ * @author YooAI Team
  *
- * Global APIs:
- * - window._setCyborgMood(moodKey) - Set mood state
- * - window._brainFire(start, len) - Trigger brain sparks (placeholder)
- * - window._soulEnergy - Energy value (read/write)
- * - window._cyborgReady - Ready flag (boolean)
+ * @dependencies
+ * - Canvas 元素 ID: cyborgCanvas
+ * - 外部变量: window.agentBusy (可选，用于控制动画状态)
+ *
+ * @global
+ * - window._setCyborgMood(moodKey) - 设置情绪状态
+ * - window._brainFire(start, len) - 触发神经元激活 (占位符)
+ * - window._soulEnergy - 能量值 (0-100, 可读写)
+ * - window._cyborgReady - 就绪标志 (boolean)
+ *
+ * @example
+ * // 设置情绪状态
+ * window._setCyborgMood('thinking');
+ *
+ * // 设置能量值
+ * window._soulEnergy = 80;
+ *
+ * @architecture
+ * 情绪状态 (7种):
+ * - sleeping: 休眠，粒子静止
+ * - thinking: 思考，温和脉动
+ * - focused: 专注，快速旋转
+ * - excited: 兴奋，剧烈运动
+ * - frustrated: 沮丧，混乱抖动
+ * - vibing: 愉悦，流畅舞动
+ * - exhausted: 疲惫，缓慢微弱
+ *
+ * 粒子系统:
+ * - 中心核心 + 环绕粒子
+ * - 粒子行为随情绪变化
+ * - 背景辉光效果
  */
 
 (function initSoul() {

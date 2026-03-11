@@ -1,5 +1,35 @@
 /**
- * YooAI App - Main Application Logic
+ * @file app.js
+ * @description YooAI 主应用逻辑模块 - 负责整体应用状态管理、事件路由、情绪系统、时间线渲染
+ * @module YooAI/App
+ * @version 2.0.0
+ * @author YooAI Team
+ *
+ * @dependencies
+ * - Gateway (gateway.js) - WebSocket 连接管理
+ * - Chat (chat.js) - 聊天面板管理
+ * - ChatStatus (chat-status.js) - 状态显示
+ * - ChatToolCards (chat-tool-cards.js) - 工具卡片组件
+ *
+ * @exports
+ * - window.YooAI.init() - 初始化应用
+ * - window.YooAI.onEvent() - 触发情绪事件
+ *
+ * @example
+ * // 初始化应用
+ * YooAI.init();
+ *
+ * // 触发情绪变化
+ * YooAI.onEvent({ vibe: +5, brain: -0.5 });
+ *
+ * @architecture
+ * 数据流: Gateway → App.js → Chat.js → DOM
+ *
+ * 主要职责:
+ * 1. 状态管理 - 情绪状态(vibe/brain/chaos/energy)、任务进度
+ * 2. 事件处理 - 网关事件分发、智能体生命周期管理
+ * 3. 时间线渲染 - 活动历史展示、统计信息
+ * 4. 会话管理 - Token使用量、模型信息
  */
 
 (function() {

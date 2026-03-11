@@ -1,6 +1,44 @@
 /**
- * YooAI Chat - Status Info Manager
- * Handles agent status updates
+ * @file chat-status.js
+ * @description YooAI 状态信息管理器 - 处理智能体状态、会话信息、Token 使用量显示
+ * @module YooAI/ChatStatus
+ * @version 2.0.0
+ * @author YooAI Team
+ *
+ * @dependencies
+ * - 无外部依赖
+ *
+ * @exports
+ * - ChatStatus.init() - 初始化状态面板
+ * - ChatStatus.updateStatus(state) - 更新智能体状态 (idle/thinking/streaming)
+ * - ChatStatus.updateSession(sessionKey) - 更新会话标识
+ * - ChatStatus.updateModel(model) - 更新模型信息
+ * - ChatStatus.updateTokens(tokens) - 更新 Token 使用量
+ *
+ * @example
+ * // 更新智能体状态
+ * ChatStatus.updateStatus('thinking'); // idle | thinking | streaming
+ *
+ * // 更新 Token 信息
+ * ChatStatus.updateTokens({
+ *   used: 50000,
+ *   total: 204800,
+ *   percentUsed: 24
+ * });
+ *
+ * // 更新模型
+ * ChatStatus.updateModel('claude-sonnet-4-6');
+ *
+ * @architecture
+ * 状态类型:
+ * - idle: 空闲，灰色指示器
+ * - thinking: 思考中，蓝色脉冲动画
+ * - streaming: 输出中，绿色指示器
+ *
+ * Token 颜色规则:
+ * - <=50%: 绿色
+ * - 50-70%: 黄色
+ * - >70%: 红色
  */
 
 const ChatStatus = (function() {

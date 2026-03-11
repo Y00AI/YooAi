@@ -1,16 +1,32 @@
 /**
- * Brain Memory Neural Network Canvas Animation
+ * @file canvas-brain.js
+ * @description YooAI 大脑记忆神经网络动画 - 展示智能体记忆网络的动态效果
+ * @module YooAI/CanvasBrain
+ * @version 2.0.0
+ * @author YooAI Team
  *
- * 神经网络动画模块，用于展示大脑记忆网络的动态效果
- *
- * 全局接口:
- * - window._brainFire(start, len) - 触发神经元激活
- *   - start: 起始节点索引 (可选，null 则随机选择)
- *   - len: 激活链长度
- *
- * 依赖:
+ * @dependencies
  * - Canvas 元素 ID: brainCanvas
  * - 外部变量: window.agentBusy (可选，用于控制动画状态)
+ *
+ * @global
+ * - window._brainFire(start, len) - 触发神经元激活动画
+ *
+ * @example
+ * // 触发神经元激活
+ * window._brainFire(null, 5); // 随机起点，激活5个节点
+ * window._brainFire(10, 3);   // 从节点10开始，激活3个节点
+ *
+ * @architecture
+ * 节点类型:
+ * - 蓝色: 回忆节点 (recall)
+ * - 黄色: 活跃节点 (active)
+ * - 粉色: 新建节点 (new)
+ *
+ * 动画效果:
+ * - 节点脉动呼吸
+ * - 连接线渐变
+ * - 激活链传递动画
  */
 
 (function() {

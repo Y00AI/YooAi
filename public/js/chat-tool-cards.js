@@ -1,6 +1,56 @@
 /**
- * YooAI Chat - Tool Cards
- * 工具卡片组件：工具调用、工具结果、思考过程（三级折叠）
+ * @file chat-tool-cards.js
+ * @description YooAI 工具卡片组件 - 可折叠的工具调用、工具结果、思考过程卡片
+ * @module YooAI/ChatToolCards
+ * @version 2.0.0
+ * @author YooAI Team
+ *
+ * @dependencies
+ * - 无外部依赖
+ *
+ * @exports
+ * - ChatToolCards.createToolCallCard({ name, args, status }) - 创建工具调用卡片
+ * - ChatToolCards.createToolResultCard({ name, text, success }) - 创建工具结果卡片
+ * - ChatToolCards.createThinkingCard({ content, summary }) - 创建思考卡片
+ * - ChatToolCards.createFoldableCard({ type, name, content, success, toolName }) - 通用卡片创建
+ * - ChatToolCards.setFoldState(card, state) - 设置折叠状态
+ * - ChatToolCards.cycleFoldState(card) - 循环切换折叠状态
+ * - ChatToolCards.getToolIcon(name) - 获取工具图标
+ * - ChatToolCards.renderContentWithTools(items) - 渲染包含工具的内容
+ *
+ * @example
+ * // 创建工具调用卡片
+ * const card = ChatToolCards.createToolCallCard({
+ *   name: 'read',
+ *   args: { file_path: '/path/to/file' }
+ * });
+ * container.appendChild(card);
+ *
+ * // 创建工具结果卡片
+ * const resultCard = ChatToolCards.createToolResultCard({
+ *   name: 'read',
+ *   text: 'File content...',
+ *   success: true
+ * });
+ *
+ * // 手动切换折叠状态
+ * ChatToolCards.cycleFoldState(card); // collapsed → partial → full → collapsed
+ *
+ * @architecture
+ * 三级折叠状态:
+ * - collapsed: 只显示标题，第1个指示点亮
+ * - partial: 显示部分内容(60px)，第2个指示点亮
+ * - full: 显示全部内容，第3个指示点亮
+ *
+ * 工具类型颜色映射:
+ * - read: 蓝色 #42a5f5
+ * - edit: 橙色 #ffa726
+ * - write: 紫色 #ab47bc
+ * - bash/exec: 黄色 #ffca28
+ * - grep: 青色 #26a69a
+ * - glob: 绿色 #66bb6a
+ * - websearch: 天蓝 #29b6f6
+ * - thinking: 紫色 #ba68c8
  */
 
 const ChatToolCards = (function() {

@@ -1,10 +1,36 @@
 /**
- * Canvas Background Particle Animation
- * Extracted from index.html
+ * @file canvas-bg.js
+ * @description YooAI 背景浮游粒子动画 - 创建沉浸式的背景氛围效果
+ * @module YooAI/CanvasBg
+ * @version 2.0.0
+ * @author YooAI Team
  *
- * Usage: Call initBg() after DOM is ready
- * Requires: Canvas element with id="bgCanvas"
+ * @dependencies
+ * - Canvas 元素 ID: bgCanvas
+ *
+ * @exports
+ * - initBg(canvasId) - 初始化背景动画
+ *
+ * @example
+ * // 在 DOM 加载后初始化
+ * document.addEventListener('DOMContentLoaded', () => {
+ *   initBg('bgCanvas');
+ * });
+ *
+ * @architecture
+ * 粒子系统:
+ * - 80个浮游粒子
+ * - 随机大小、位置、速度
+ * - 半透明渐变效果
+ *
+ * 颜色方案:
+ * - 青色: rgba(100, 220, 220, 0.4)
+ * - 橙色: rgba(245, 130, 105, 0.4)
+ * - 粉色: rgba(247, 195, 155, 0.4)
+ * - 玫红: rgba(242, 165, 195, 0.4)
+ * - 金色: rgba(249, 228, 140, 0.4)
  */
+
 (function(global) {
   'use strict';
 
