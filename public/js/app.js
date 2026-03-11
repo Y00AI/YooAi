@@ -342,13 +342,17 @@
         let label = '';
 
         if (userItem && userItem.text) {
-          // 尝试从 JSON 格式的消息中提取 label
           let displayText = userItem.text;
-          const jsonMatch = userItem.text.match(/"label":\s*"([^"]+)"/);
-          if (jsonMatch) {
-            displayText = jsonMatch[1];
-          } else if (userItem.text.startsWith('Sender (untrusted metadata)') || userItem.text.includes('HEARTBEAT')) {
+
+          // 先检查是否是心跳/系统消息
+          if (userItem.text.startsWith('Sender (untrusted metadata)') || userItem.text.includes('HEARTBEAT')) {
             displayText = '心跳检查';
+          } else {
+            // 尝试从 JSON 格式的消息中提取 label
+            const jsonMatch = userItem.text.match(/"label":\s*"([^"]+)"/);
+            if (jsonMatch) {
+              displayText = jsonMatch[1];
+            }
           }
 
           // 截取显示文本
