@@ -342,12 +342,22 @@
         let label = '';
 
         if (userItem && userItem.text) {
-          const snippet = userItem.text.replace(/[^\w\s.,!?'-]/g, '').trim().slice(0, 40);
+          // 保留中文、英文、数字和基本标点
+          const snippet = userItem.text.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim().slice(0, 40);
           label = snippet ? '💬 ' + snippet + (userItem.text.length > 40 ? '…' : '') : '💬 用户消息';
         } else if (group.hasAssistant) {
           label = '✨ Agent 响应';
         } else {
           label = '✨ 活动';
+        }
+
+        // 构建标签集合
+        const tags = new Set();
+        if (group.tools > 0) {
+          tags.add('agent'); // 有工具调用，标记为 AGENT
+        }
+        if (group.hasUser) {
+          tags.add('chat'); // 有用户消息，标记为 CHAT
         }
 
         // 创建任务对象
@@ -358,7 +368,7 @@
           tools: group.tools,
           errors: group.errors,
           tokens: group.tokens.total,
-          tags: new Set(group.hasUser ? ['chat'] : []),
+          tags: tags,
           el: null
         };
 
@@ -1116,7 +1126,8 @@
   function tlRenderEntry(el, task, active) {
     // 活跃任务显示圆点，历史任务显示实际持续时间
     const dur = active ? '●' : tlFmtDur((task.lastMs || task.startMs) - task.startMs);
-    const icon = task.errors > 0 ? '⚠️' : task.tools > 2 ? '🔧' : task.tags.has('chat') ? '💬' : '✨';
+    // 图标选择：错误 > 有工具调用(Agent) > 聊天 > 默认
+    const icon = task.errors > 0 ? '⚠️' : task.tags.has('agent') ? '🤖' : task.tags.has('chat') ? '💬' : '✨';
     const time = new Date(task.startMs).toTimeString().slice(0, 8);
 
     // Clear and rebuild using DOM methods
