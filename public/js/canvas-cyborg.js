@@ -726,7 +726,6 @@
   // Placeholder for brain fire - can be implemented separately
   window._brainFire = function (start, len) {
     // Brain fire animation is handled by a separate canvas module
-    console.log('[Cyborg] Brain fire triggered:', { start, len });
   };
 
   // ---- DRAW ----

@@ -105,7 +105,6 @@ const ChatStatus = (function() {
   function updateTokens(tokens) {
     const tokenEl = document.getElementById('chatTokenInfo');
     if (!tokenEl) {
-      console.log('[ChatStatus] Token element not found');
       return;
     }
 
@@ -124,8 +123,6 @@ const ChatStatus = (function() {
       total = arguments[1] || 204800;
       pct = Math.round((used / total) * 100);
     }
-
-    console.log('[ChatStatus] Updating tokens:', { used, total, pct });
 
     const usedK = Math.round(used / 1000);
     const totalK = Math.round(total / 1000);

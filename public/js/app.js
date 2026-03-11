@@ -87,13 +87,10 @@
    */
   async function loadChatHistory() {
     try {
-      console.log('[App] Loading chat history for session:', currentSessionKey);
       const result = await Gateway.request('chat.history', {
         sessionKey: currentSessionKey,
         limit: 100
       });
-
-      console.log('[App] Chat history result:', result);
 
       if (result && Array.isArray(result.messages)) {
         // Clear existing messages first
@@ -111,17 +108,13 @@
           const role = msg.role || 'user';
           const timestamp = msg.timestamp || Date.now();
 
-          console.log('[App] Processing message:', { role, stopReason: msg.stopReason, contentType: Array.isArray(content) ? 'array' : typeof content });
-
           // 跳过 assistant 的中间过程（只显示最终结果）
           if (role === 'assistant' && msg.stopReason && msg.stopReason !== 'stop') {
-            console.log('[App] Skipping intermediate assistant message');
             continue;
           }
 
           // 处理 toolResult 消息（role === 'toolResult'）
           if (role === 'toolResult') {
-            console.log('[App] Processing toolResult message:', msg);
             if (typeof ChatToolCards !== 'undefined') {
               const resultText = Array.isArray(content)
                 ? content.map(c => c.text || '').join('')
@@ -134,7 +127,6 @@
               });
 
               if (card && typeof Chat !== 'undefined') {
-                console.log('[App] Appending toolResult card');
                 Chat.appendElement(card);
                 loadedCount++;
               }
@@ -165,13 +157,10 @@
           const textParts = [];
           const specialItems = [];
 
-          console.log('[App] Processing message content array:', content);
-
           for (const item of content) {
             if (!item) continue;
 
             const itemType = item.type;
-            console.log('[App] Content item type:', itemType, 'item:', item);
 
             if (itemType === 'text') {
               textParts.push(item.text || '');
@@ -189,8 +178,6 @@
             }
           }
 
-          console.log('[App] specialItems:', specialItems);
-
           // 添加文本消息（如果有）
           const textContent = textParts.join('');
           if (textContent) {
@@ -201,7 +188,6 @@
           // 添加特殊类型卡片（toolCall、thinking）
           for (const item of specialItems) {
             if (typeof ChatToolCards === 'undefined') {
-              console.warn('[App] ChatToolCards not available');
               continue;
             }
 
@@ -220,20 +206,17 @@
             }
 
             if (card && typeof Chat !== 'undefined') {
-              console.log('[App] Appending card:', item.type);
               Chat.appendElement(card);
               loadedCount++;
             }
           }
         }
 
-        console.log('[App] Loaded', loadedCount, 'messages from history (total', result.messages.length, ')');
-
         // 从后端 API 加载时间线历史
         loadTimelineHistory();
       }
     } catch (err) {
-      console.log('[App] Failed to load chat history:', err.message);
+      // 静默处理加载历史失败
     }
   }
 
@@ -243,17 +226,13 @@
    */
   async function loadTimelineHistory() {
     try {
-      console.log('[Timeline] Loading timeline from API...');
-
       // 调用后端 API 获取时间线数据
       const response = await fetch(`/api/timeline/${encodeURIComponent(currentSessionKey)}`);
       if (!response.ok) {
-        console.log('[Timeline] API returned', response.status);
         return;
       }
 
       const data = await response.json();
-      console.log('[Timeline] API response:', data.summary, data.stats);
 
       if (data.error) {
         console.error('[Timeline] API error:', data.error);
@@ -263,7 +242,6 @@
       // 清空现有时间线
       const list = document.getElementById('timelineList');
       if (!list) {
-        console.log('[Timeline] timelineList element not found');
         return;
       }
       list.textContent = '';
@@ -283,8 +261,6 @@
       const timeline = data.timeline || [];
       const conversations = data.conversations || [];
       const stats = data.stats || {};
-
-      console.log('[Timeline] Timeline items:', timeline.length, '| Conversations:', conversations.length);
 
       // 按对话分组时间线项目
       // 每个用户消息开始一个新的分组
@@ -339,8 +315,6 @@
       // 只显示最近 20 个分组
       const recentGroups = groups.slice(-20);
 
-      console.log('[Timeline] Created', groups.length, 'groups, showing', recentGroups.length);
-
       // 渲染每个分组
       for (const group of recentGroups) {
         try {
@@ -352,14 +326,6 @@
 
       // 更新统计显示
       updateTimelineStats();
-
-      console.log('[Timeline] Loaded', recentGroups.length, 'timeline entries | Stats:', {
-        tasks: tlTasks,
-        msgs: tlMsgs,
-        tools: tlTools,
-        errors: tlErrors,
-        tokens: tlTotalTokens
-      });
 
     } catch (err) {
       console.error('[Timeline] Failed to load timeline history:', err.message, err.stack);
@@ -374,18 +340,12 @@
     const userItem = group.items.find(i => i.type === 'message' && i.subtype === 'user');
     let label = '';
 
-    // 调试：打印原始用户消息（完整内容）
-    if (userItem && userItem.text) {
-      console.log('[Timeline] 原始用户消息（完整）:', userItem.text);
-    }
-
     if (userItem && userItem.text) {
       let displayText = String(userItem.text);
 
       // 检查是否是心跳消息（以 "Read HEARTBEAT.md" 开头）
       if (displayText.startsWith('Read HEARTBEAT.md')) {
         displayText = '心跳检查';
-        console.log('[Timeline] -> 识别为心跳消息');
       } else {
         // 尝试提取用户实际输入的内容
         // 格式：[Wed 2026-03-11 14:26 GMT+8] 用户输入内容
@@ -394,11 +354,9 @@
         if (userInputMatch && userInputMatch[1]) {
           // 提取到用户输入，去掉 JSON metadata 部分
           displayText = userInputMatch[1].trim();
-          console.log('[Timeline] -> 提取用户输入:', displayText.substring(0, 50));
         } else if (displayText.startsWith('Sender (untrusted metadata)')) {
           // 如果有 Sender 但没有找到用户输入格式，可能是纯心跳
           displayText = '心跳检查';
-          console.log('[Timeline] -> Sender 消息但无用户输入，标记为心跳');
         }
       }
 
@@ -410,8 +368,6 @@
     } else {
       label = '✨ 活动';
     }
-
-    console.log('[Timeline] 最终标签:', label);
 
     // 构建标签集合
     const tags = new Set();
@@ -513,10 +469,9 @@
   async function fetchSessionStatus() {
     try {
       const result = await Gateway.request('status', {});
-      console.log('[App] Status:', result);
       updateSessionUI(result);
     } catch (err) {
-      console.log('[App] Failed to fetch status:', err.message);
+      // 静默处理状态获取失败
     }
   }
 
@@ -531,15 +486,11 @@
     // 找到匹配当前 sessionKey 的会话，或者取第一个
     const current = sessions.find(s => s.key === currentSessionKey) || sessions[0];
 
-    console.log('[App] Updating session UI, current session:', current?.key);
-
     if (current && typeof ChatStatus !== 'undefined') {
       // 字段名是 totalTokens，不是 used
       const used = current.totalTokens || 0;
       const max = current.contextTokens || 204800;
       const percent = current.percentUsed || 0;
-
-      console.log('[App] Token info:', { used, max, percent });
 
       ChatStatus.updateTokens({
         used: used,
@@ -810,8 +761,6 @@
         const stream = payload.stream;
         const data = payload.data || p.data || p;
 
-        console.log('[App] Agent event:', { stream, phase: data.phase, hasDelta: !!data.delta });
-
         // Lifecycle: start → show thinking indicator
         if (stream === 'lifecycle' && data.phase === 'start') {
           Chat.showTyping();
@@ -844,7 +793,6 @@
           // 检查是否是工具调用/结果
           const dataType = data.type;
           if (dataType === 'tool_call') {
-            console.log('[App] Tool call:', data.name, data.args);
             Chat.appendToolCall({
               name: data.name,
               args: data.args,
@@ -855,7 +803,6 @@
           }
 
           if (dataType === 'tool_result') {
-            console.log('[App] Tool result:', data.name, data.text?.substring(0, 50));
             Chat.appendToolResult({
               name: data.name,
               text: data.text,
@@ -871,8 +818,6 @@
             raw = data.text || data.content || '';
           }
           if (typeof raw !== 'string') raw = JSON.stringify(raw);
-
-          console.log('[App] Assistant stream, runId:', runId, 'delta:', raw?.substring(0, 30));
 
           if (raw) {
             Chat.appendToStream(raw);
@@ -915,8 +860,6 @@
           updateSessionFromKey(p.sessionKey);
         }
 
-        console.log('[App] Chat event:', { runId, state, hasMessage: !!p.message });
-
         // 更新统计
         const parts = sessionId.split(':');
         const agentName = parts[1] || parts[0] || 'agent';
@@ -934,18 +877,15 @@
 
         // 检查是否已经通过 agent 事件流式显示
         const alreadyStreamed = runId && streamedRunIds.has(runId);
-        console.log('[App] Chat final, runId:', runId, 'alreadyStreamed:', alreadyStreamed);
 
         if (state === 'final') {
           if (alreadyStreamed) {
             // 已通过 agent 流式显示，只结束流
-            console.log('[App] Final: ending stream, content already displayed');
             Chat.endStream();
             // 清除标记，避免影响后续消息
             streamedRunIds.delete(runId);
           } else {
             // 没有流式显示，添加完整消息
-            console.log('[App] Final: adding complete message');
             const msg = p.message;
             if (msg && (msg.content || msg.text)) {
               let content = msg.content;
@@ -1064,7 +1004,7 @@
 
   // === LOGGING ===
   function addLog(type, tag, msg) {
-    console.log(`[${tag}] ${msg}`);
+    // 生产环境不打印日志
   }
 
   // === TIMELINE ===

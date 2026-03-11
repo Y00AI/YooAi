@@ -39,7 +39,6 @@ const Chat = (function() {
     // Listen for gateway connection events
     if (typeof Gateway !== 'undefined' && Gateway.onMessage) {
       Gateway.onMessage((msg) => {
-        console.log('[Chat] Gateway message:', msg.type);
         if (msg.type === 'gateway.connected') {
           updateConnectionStatus(true);
         } else if (msg.type === 'gateway.disconnected' || msg.type === 'gateway.error') {
@@ -51,7 +50,6 @@ const Chat = (function() {
     // Check initial connection status after a short delay
     setTimeout(() => {
       const connected = typeof Gateway !== 'undefined' && Gateway.isConnected && Gateway.isConnected();
-      console.log('[Chat] Initial connection status:', connected);
       updateConnectionStatus(connected);
     }, 500);
   }
@@ -107,11 +105,8 @@ const Chat = (function() {
 
     const text = input.value.trim();
     if (!text) {
-      console.log('[Chat] Empty message, skipped');
       return;
     }
-
-    console.log('[Chat] Sending message:', text.slice(0, 50) + '...');
 
     // End any previous streaming message before starting new conversation
     endStream();
@@ -152,8 +147,7 @@ const Chat = (function() {
       }
     };
 
-    const sent = Gateway.send(payload);
-    console.log('[Chat] Message sent:', sent, 'payload:', payload);
+    Gateway.send(payload);
   }
 
   /**
@@ -197,7 +191,6 @@ const Chat = (function() {
    * Now uses ChatMessageUtils.showTypingIndicator()
    */
   function appendToStream(content) {
-    console.log('[Chat] appendToStream called with:', content?.substring(0, 50));
     try {
       // Hide typing indicator when content starts arriving
       if (typeof ChatMessageUtils !== 'undefined') {
@@ -263,8 +256,6 @@ const Chat = (function() {
    * @param {string} options.status - Status (pending/running)
    */
   function appendToolCall({ name, args, status = 'running' }) {
-    console.log('[Chat] appendToolCall:', name);
-
     // Ensure we have a streaming message container
     if (!currentStreamingMsg || !currentStreamingMsg.streaming) {
       // Create a new streaming message for tool calls
@@ -302,8 +293,6 @@ const Chat = (function() {
    * @param {boolean} options.success - Whether tool succeeded
    */
   function appendToolResult({ name, text, success = true }) {
-    console.log('[Chat] appendToolResult:', name, 'success:', success);
-
     // Ensure we have a streaming message container
     if (!currentStreamingMsg || !currentStreamingMsg.streaming) {
       currentStreamingMsg = {
@@ -360,9 +349,7 @@ const Chat = (function() {
    */
   function appendElement(element) {
     const container = document.getElementById('messagesContainer');
-    console.log('[Chat] appendElement called, container:', container, 'element:', element);
     if (!container) {
-      console.error('[Chat] messagesContainer not found!');
       return;
     }
 
@@ -370,10 +357,8 @@ const Chat = (function() {
     const empty = container.querySelector('.chat-empty');
     if (empty) empty.remove();
 
-    console.log('[Chat] Appending element to container, element classes:', element.className);
     container.appendChild(element);
     scrollToBottom();
-    console.log('[Chat] Element appended successfully');
   }
 
   /**

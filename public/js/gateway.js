@@ -24,7 +24,6 @@ const Gateway = (function() {
         connected = true;
         updateConnectionUI(true);
         dispatchMessage({ type: 'gateway.connected' });
-        console.log('[Gateway] Connected to OpenClaw');
       };
 
       ws.onmessage = (e) => {
@@ -45,7 +44,6 @@ const Gateway = (function() {
         connected = false;
         updateConnectionUI(false);
         dispatchMessage({ type: 'gateway.disconnected', code: e.code });
-        console.log('[Gateway] Disconnected:', e.code);
       };
     } catch (err) {
       console.error('[Gateway] Failed to connect:', err);
@@ -122,7 +120,6 @@ const Gateway = (function() {
         params
       };
 
-      console.log('[Gateway] Sending request:', method, params);
       ws.send(JSON.stringify(payload));
     });
   }
@@ -147,8 +144,6 @@ const Gateway = (function() {
     // Unwrap envelope
     const ev = (d.type === 'event' && d.event) ? d.event : (d.type || d.event || '?');
     const p = (d.type === 'event' && d.payload) ? d.payload : d;
-
-    console.log('[Gateway] Processing:', { ev, stream: p.stream, phase: p.data?.phase });
 
     // Dispatch to handlers
     dispatchMessage({ type: ev, payload: p, raw: d });

@@ -450,7 +450,6 @@ function startBackendServer() {
     });
 
     gatewayWs.on('close', (code, reason) => {
-      console.log('[YooAI] gateway closed — code:', code, 'reason:', reason && reason.toString());
       if (clientWs.readyState === WebSocket.OPEN)
         clientWs.send(JSON.stringify({ type: 'proxy.disconnected', code, reason: reason && reason.toString() }));
     });
@@ -513,14 +512,13 @@ function startHotReload() {
     if (/\.(js|css|html)$/i.test(filename)) {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        console.log('[YooAI] File changed, reloading:', filename);
         if (mainWindow && mainWindow.webContents) {
           mainWindow.webContents.reload();
         }
       }, 200);
     }
   });
-  fileWatcher.on('error', (err) => console.log('[YooAI] File watcher error:', err.message));
+  fileWatcher.on('error', (err) => console.error('[YooAI] File watcher error:', err.message));
 }
 
 function createTray() {
