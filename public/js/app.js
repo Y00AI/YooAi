@@ -330,21 +330,17 @@
         const isFirst = (i === 0);
         const isLast = (i === recentGroups.length - 1);
 
-        // 生成标签
+        // 生成标签 - 始终尝试从用户消息中提取摘要
         let label = '';
-        if (group.hasUser && group.hasAssistant) {
-          label = '💬 对话';
-        } else if (group.hasUser) {
-          // 尝试提取用户消息摘要
-          const userMsg = group.messages.find(m => m.role === 'user');
-          if (userMsg) {
-            const text = extractTextFromContent(userMsg.content);
-            const snippet = text.replace(/[^\w\s.,!?'-]/g, '').trim().slice(0, 35);
-            label = snippet ? '💬 ' + snippet + (text.length > 35 ? '…' : '') : '💬 用户消息';
-          } else {
-            label = '💬 用户消息';
-          }
+        const userMsg = group.messages.find(m => m.role === 'user');
+
+        if (userMsg) {
+          // 有用户消息，提取摘要
+          const text = extractTextFromContent(userMsg.content);
+          const snippet = text.replace(/[^\w\s.,!?'-]/g, '').trim().slice(0, 40);
+          label = snippet ? '💬 ' + snippet + (text.length > 40 ? '…' : '') : '💬 用户消息';
         } else if (group.hasAssistant) {
+          // 只有 assistant 响应
           label = '✨ Agent 响应';
         } else {
           label = '✨ 活动';
@@ -1096,7 +1092,8 @@
   }
 
   function tlRenderEntry(el, task, active) {
-    const dur = active ? '●' : tlFmtDur(Date.now() - task.startMs);
+    // 活跃任务显示圆点，历史任务显示实际持续时间
+    const dur = active ? '●' : tlFmtDur((task.lastMs || task.startMs) - task.startMs);
     const icon = task.errors > 0 ? '⚠️' : task.tools > 2 ? '🔧' : task.tags.has('chat') ? '💬' : '✨';
     const time = new Date(task.startMs).toTimeString().slice(0, 8);
 
