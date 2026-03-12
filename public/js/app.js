@@ -130,6 +130,35 @@
   };
 
   /**
+   * 提取用户真正的输入内容
+   * 格式：Sender (untrusted metadata):\n```json{...}```\n\n[Thu 2026-03-12 21:01 GMT+8] 真正的用户输入
+   * @param {string} text - 原始文本
+   * @returns {string} - 提取后的用户输入
+   */
+  function extractUserInput(text) {
+    if (!text || typeof text !== 'string') return text;
+
+    // 检查是否是心跳消息
+    if (text.startsWith('Read HEARTBEAT.md')) {
+      return '💓 心跳检查';
+    }
+
+    // 尝试提取用户实际输入的内容
+    // 格式：[Wed 2026-03-11 14:26 GMT+8] 用户输入内容
+    const userInputMatch = text.match(/\[[A-Za-z]+ \d{4}-\d{2}-\d{2} \d{2}:\d{2} GMT[+-]?\d+\]\s*(.+)$/s);
+    if (userInputMatch && userInputMatch[1]) {
+      return userInputMatch[1].trim();
+    }
+
+    // 如果有 Sender 但没有找到用户输入格式，可能是纯心跳
+    if (text.startsWith('Sender (untrusted metadata)')) {
+      return '💓 心跳检查';
+    }
+
+    return text;
+  }
+
+  /**
    * 重新加载消息（根据当前过滤设置）
    */
   function reloadMessages() {
@@ -381,7 +410,9 @@
     // 字符串内容 - 始终显示
     if (typeof content === 'string') {
       if (content && typeof Chat !== 'undefined') {
-        Chat.addMessage({ role, content, timestamp });
+        // 用户消息：提取真正的用户输入
+        const displayContent = role === 'user' ? extractUserInput(content) : content;
+        Chat.addMessage({ role, content: displayContent, timestamp });
       }
       return;
     }
@@ -390,7 +421,9 @@
     if (!Array.isArray(content)) {
       const text = msg.text || JSON.stringify(content);
       if (text && typeof Chat !== 'undefined') {
-        Chat.addMessage({ role, content: text, timestamp });
+        // 用户消息：提取真正的用户输入
+        const displayContent = role === 'user' ? extractUserInput(text) : text;
+        Chat.addMessage({ role, content: displayContent, timestamp });
       }
       return;
     }
@@ -438,7 +471,8 @@
     // 字符串内容 - 始终显示
     if (typeof content === 'string') {
       if (content && typeof Chat !== 'undefined' && typeof Chat.prependMessage === 'function') {
-        Chat.prependMessage({ role, content, timestamp });
+        const displayContent = role === 'user' ? extractUserInput(content) : content;
+        Chat.prependMessage({ role, content: displayContent, timestamp });
       }
       return;
     }
@@ -447,7 +481,8 @@
     if (!Array.isArray(content)) {
       const text = msg.text || JSON.stringify(content);
       if (text && typeof Chat !== 'undefined' && typeof Chat.prependMessage === 'function') {
-        Chat.prependMessage({ role, content: text, timestamp });
+        const displayContent = role === 'user' ? extractUserInput(text) : text;
+        Chat.prependMessage({ role, content: displayContent, timestamp });
       }
       return;
     }
@@ -486,7 +521,8 @@
     // 添加文本消息
     const textContent = textParts.join('');
     if (textContent && typeof Chat !== 'undefined' && typeof Chat.prependMessage === 'function') {
-      Chat.prependMessage({ role, content: textContent, timestamp });
+      const displayContent = role === 'user' ? extractUserInput(textContent) : textContent;
+      Chat.prependMessage({ role, content: displayContent, timestamp });
     }
 
     // 添加特殊卡片
@@ -554,7 +590,9 @@
     // 添加文本消息 - 始终显示
     const textContent = textParts.join('');
     if (textContent && typeof Chat !== 'undefined') {
-      Chat.addMessage({ role, content: textContent, timestamp });
+      // 用户消息：提取真正的用户输入
+      const displayContent = role === 'user' ? extractUserInput(textContent) : textContent;
+      Chat.addMessage({ role, content: displayContent, timestamp });
     }
 
     // 添加特殊卡片
