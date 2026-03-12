@@ -292,17 +292,18 @@
 
         // 反向遍历，如果是加载更多则插入到顶部
         if (loadMore && newCount > 0) {
-          // 从旧到新遍历，插入到顶部
-          for (let i = newMessages.length - 1; i >= 0; i--) {
-            const msg = newMessages[i];
-            if (msg && (msg.content || msg.text)) {
-              renderMessageToTop(msg);
+          // 清空并重新渲染所有缓存的消息（包括新加载的）
+          if (typeof Chat !== 'undefined') {
+            Chat.clear();
+            for (const msg of cachedMessages) {
+              if (msg && (msg.content || msg.text)) {
+                renderMessage(msg, true);
+              }
             }
           }
-          // 恢复滚动位置
+          // 滚动到顶部，让用户看到新加载的更早消息
           if (container) {
-            const newScrollHeight = container.scrollHeight;
-            container.scrollTop = newScrollHeight - oldScrollHeight;
+            container.scrollTop = 0;
           }
         } else if (!loadMore) {
           // 正常加载，追加到底部
