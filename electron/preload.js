@@ -7,5 +7,8 @@ contextBridge.exposeInMainWorld('yooai', {
   maximize: () => ipcRenderer.send('win-maximize'),
   closeWindow: () => ipcRenderer.send('win-close'),
   openDevTools: () => ipcRenderer.send('win-devtools'),
-  platform: process.platform
+  platform: process.platform,
+  // 图片处理 API
+  saveImage: async (data) => ipcRenderer.invoke('save-image', data),
+  selectImage: async () => ipcRenderer.invoke('select-image')
 });

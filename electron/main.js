@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain, dialog } = require('electron');
 const { createServer } = require('http');
 const WebSocket = require('ws');
 const path = require('path');
@@ -16,6 +16,7 @@ let PORT = PREFERRED_PORT;
 const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(os.homedir(), '.openclaw');
 const WORKSPACE = path.join(OPENCLAW_HOME, 'workspace');
 const MEMORY_DIR = path.join(WORKSPACE, 'memory');
+const IMAGES_DIR = path.join(WORKSPACE, 'images');
 const SESSIONS_DIR = path.join(OPENCLAW_HOME, 'agents/main/sessions');
 const isDev = process.argv.includes('--dev');
 
@@ -566,3 +567,141 @@ ipcMain.on('win-maximize', () => { if (!mainWindow) return; mainWindow.isMaximiz
 ipcMain.on('win-close', () => { app.isQuitting = true; app.quit(); });
 ipcMain.on('win-devtools', () => { if (mainWindow) mainWindow.webContents.openDevTools(); });
 ipcMain.handle('get-gateway-log', () => { const today = new Date().toISOString().slice(0,10); return path.join(os.tmpdir(), 'openclaw', `openclaw-${today}.log`); });
+
+// ── Image handling IPC handlers ────────────────────────────────────────────────
+
+/**
+ * 确保 images 目录存在
+ */
+function ensureImagesDir() {
+  try {
+    if (!fs.existsSync(IMAGES_DIR)) {
+      fs.mkdirSync(IMAGES_DIR, { recursive: true });
+    }
+    return true;
+  } catch (err) {
+    console.error('[YooAI] Failed to create images directory:', err.message);
+    return false;
+  }
+}
+
+/**
+ * 解析 data URL 并提取图片信息
+ * @param {string} dataUrl - base64 data URL (data:image/png;base64,...)
+ * @returns {{ mimeType: string, ext: string, buffer: Buffer } | null}
+ */
+function parseDataUrl(dataUrl) {
+  if (!dataUrl || typeof dataUrl !== 'string') {
+    return null;
+  }
+
+  // 验证 data URL 格式
+  const match = dataUrl.match(/^data:(image\/([a-z]+));base64,(.+)$/i);
+  if (!match) {
+    return null;
+  }
+
+  const mimeType = match[1].toLowerCase();
+  const ext = match[2].toLowerCase();
+  const base64Data = match[3];
+
+  // 支持的图片格式
+  const supportedFormats = ['png', 'jpeg', 'jpg', 'gif', 'webp'];
+  if (!supportedFormats.includes(ext)) {
+    return null;
+  }
+
+  try {
+    const buffer = Buffer.from(base64Data, 'base64');
+    return { mimeType, ext, buffer };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 生成安全的文件名
+ * @param {string} filename - 原始文件名
+ * @param {string} ext - 文件扩展名
+ * @returns {string}
+ */
+function generateSafeFilename(filename, ext) {
+  const timestamp = Date.now();
+  // 移除危险字符，只保留字母数字和下划线
+  const safeName = (filename || 'image')
+    .replace(/[^a-zA-Z0-9_\u4e00-\u9fa5]/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 50);
+  return `${timestamp}-${safeName}.${ext}`;
+}
+
+/**
+ * IPC Handler: save-image
+ * 保存 base64 图片到本地
+ * @param {object} data - { dataUrl: string, filename?: string }
+ * @returns {{ success: boolean, path?: string, error?: string }}
+ */
+ipcMain.handle('save-image', async (event, data) => {
+  try {
+    // 验证输入
+    if (!data || !data.dataUrl) {
+      return { success: false, error: '缺少 dataUrl 参数' };
+    }
+
+    // 确保目录存在
+    if (!ensureImagesDir()) {
+      return { success: false, error: '无法创建图片目录' };
+    }
+
+    // 解析 data URL
+    const parsed = parseDataUrl(data.dataUrl);
+    if (!parsed) {
+      return { success: false, error: '无效的图片格式，支持 png/jpg/gif/webp' };
+    }
+
+    // 验证文件大小（10MB 限制）
+    const MAX_SIZE = 10 * 1024 * 1024;
+    if (parsed.buffer.length > MAX_SIZE) {
+      return { success: false, error: '图片大小超过限制（最大 10MB）' };
+    }
+
+    // 生成文件名
+    const filename = generateSafeFilename(data.filename, parsed.ext);
+    const filePath = path.join(IMAGES_DIR, filename);
+
+    // 写入文件
+    fs.writeFileSync(filePath, parsed.buffer);
+
+    // 返回相对路径（相对于 workspace）
+    return { success: true, path: `images/${filename}` };
+  } catch (err) {
+    console.error('[YooAI] save-image error:', err.message);
+    return { success: false, error: err.message || '保存图片失败' };
+  }
+});
+
+/**
+ * IPC Handler: select-image
+ * 打开文件选择对话框选择图片
+ * @returns {{ canceled: boolean, paths?: string[] }}
+ */
+ipcMain.handle('select-image', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: '选择图片',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: '图片文件', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+
+    return { canceled: false, paths: result.filePaths };
+  } catch (err) {
+    console.error('[YooAI] select-image error:', err.message);
+    return { canceled: true };
+  }
+});

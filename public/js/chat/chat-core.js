@@ -2,7 +2,7 @@
  * @file chat-core.js
  * @description 聊天核心逻辑 - 初始化、消息发送、事件监听和模块协调
  * @module YooAI/Chat/Core
- * @version 2.0.0
+ * @version 2.1.0
  * @author 赵工
  *
  * @dependencies
@@ -11,6 +11,7 @@
  * - ChatStream (chat/chat-stream.js) - 流式消息处理
  * - ChatNormalizer (chat-normalizer.js) - 消息格式化
  * - ChatMessageUtils (chat-message-utils.js) - UI工具
+ * - ImageInput (image-input.js) - 图片输入处理
  * - marked (外部库) - Markdown解析
  * - DOMPurify (外部库) - HTML消毒
  *
@@ -48,17 +49,22 @@
  * 模块架构:
  * ChatCore (协调器)
  *   ├── ChatRenderer (渲染器)
- *   └── ChatStream (流处理器)
+ *   ├── ChatStream (流处理器)
+ *   └── ImageInput (图片输入)
  *
  * 消息流程:
  * 1. 用户输入 -> sendMessage() -> Gateway.send()
  * 2. Gateway事件 -> app.js分发 -> ChatStream.appendToStream()
  * 3. 完整消息 -> addMessage() -> ChatRenderer.renderMessage()
+ * 4. 图片消息 -> ImageInput -> saveImage -> Gateway.send()
  */
 
 const Chat = (function() {
   // 消息存储
   let messages = [];
+
+  // 定时器引用，用于清理
+  let attachBtnInterval = null;
 
   /**
    * 初始化聊天面板
@@ -78,6 +84,11 @@ const Chat = (function() {
         messages: messages,
         renderer: typeof ChatRenderer !== 'undefined' ? ChatRenderer : null
       });
+    }
+
+    // 初始化图片输入模块
+    if (typeof ImageInput !== 'undefined') {
+      ImageInput.init();
     }
 
     setupEventListeners();
@@ -125,16 +136,17 @@ const Chat = (function() {
   function setupEventListeners() {
     const input = document.getElementById('chatInput');
     const sendBtn = document.getElementById('chatSendBtn');
+    const attachBtn = document.getElementById('chatAttachBtn');
 
     if (input) {
       // 自动调整文本框高度
-      input.addEventListener('input', () => {
+      input.addEventListener('input', function() {
         input.style.height = 'auto';
         input.style.height = Math.min(input.scrollHeight, 120) + 'px';
       });
 
       // Cmd/Ctrl + Enter 发送
-      input.addEventListener('keydown', (e) => {
+      input.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
           e.preventDefault();
           sendMessage();
@@ -145,12 +157,44 @@ const Chat = (function() {
     if (sendBtn) {
       sendBtn.addEventListener('click', sendMessage);
     }
+
+    // 附件按钮 - 触发图片选择
+    if (attachBtn) {
+      attachBtn.addEventListener('click', function() {
+        if (typeof ImageInput !== 'undefined') {
+          ImageInput.triggerFileInput();
+        }
+      });
+
+      // 更新附件按钮状态（清理旧的定时器）
+      if (attachBtnInterval) {
+        clearInterval(attachBtnInterval);
+      }
+      attachBtnInterval = setInterval(function() {
+        updateAttachButtonState();
+      }, 500);
+    }
+  }
+
+  /**
+   * 更新附件按钮状态
+   */
+  function updateAttachButtonState() {
+    const attachBtn = document.getElementById('chatAttachBtn');
+    if (attachBtn && typeof ImageInput !== 'undefined') {
+      if (ImageInput.hasImages()) {
+        attachBtn.classList.add('has-images');
+      } else {
+        attachBtn.classList.remove('has-images');
+      }
+    }
   }
 
   /**
    * 发送消息
+   * 支持文本和图片混合发送
    */
-  function sendMessage() {
+  async function sendMessage() {
     const input = document.getElementById('chatInput');
     if (!input) {
       console.error('[Chat] Input element not found');
@@ -158,17 +202,65 @@ const Chat = (function() {
     }
 
     const text = input.value.trim();
-    if (!text) {
+    const hasImages = typeof ImageInput !== 'undefined' && ImageInput.hasImages();
+
+    // 如果没有文本且没有图片，不发送
+    if (!text && !hasImages) {
       return;
     }
 
     // 开始新对话前结束之前的流式消息
     endStream();
 
+    // 构建消息内容
+    let messageContent = text;
+
+    // 如果有图片，先保存图片到 workspace
+    if (hasImages) {
+      try {
+        const images = await ImageInput.getPendingImages();
+        const savedPaths = [];
+
+        // 逐个保存图片
+        for (let i = 0; i < images.length; i++) {
+          const img = images[i];
+          const savedPath = await saveImageToWorkspace(img);
+          if (savedPath) {
+            savedPaths.push(savedPath);
+          }
+        }
+
+        // 构建包含图片路径的消息
+        if (savedPaths.length > 0) {
+          const imagePaths = savedPaths.map(function(p) {
+            return '![image](' + p + ')';
+          }).join('\n');
+
+          if (text) {
+            messageContent = text + '\n\n' + imagePaths;
+          } else {
+            messageContent = imagePaths;
+          }
+        }
+
+        // 清空图片列表
+        ImageInput.clearAll();
+
+      } catch (err) {
+        console.error('[Chat] 保存图片失败:', err);
+        addMessage({
+          role: 'assistant',
+          content: '保存图片失败: ' + err.message,
+          timestamp: Date.now()
+        });
+        return;
+      }
+    }
+
     // 添加用户消息到UI
     addMessage({
       role: 'user',
-      content: text,
+      content: messageContent,
       timestamp: Date.now()
     });
 
@@ -196,12 +288,41 @@ const Chat = (function() {
       method: 'chat.send',
       params: {
         sessionKey: 'main',
-        message: text,
+        message: messageContent,
         idempotencyKey: 'idem-' + timestamp + '-' + random
       }
     };
 
     Gateway.send(payload);
+  }
+
+  /**
+   * 保存图片到 workspace
+   * @param {Object} img - 图片对象 { dataUrl, filename, type }
+   * @returns {Promise<string|null>} 保存后的文件路径
+   */
+  async function saveImageToWorkspace(img) {
+    // 检查是否有 Electron API
+    if (typeof window !== 'undefined' && window.yooai && window.yooai.saveImage) {
+      try {
+        const result = await window.yooai.saveImage({
+          dataUrl: img.dataUrl,
+          filename: img.filename
+        });
+
+        if (result && result.path) {
+          return result.path;
+        }
+        return null;
+      } catch (err) {
+        console.error('[Chat] saveImage API 调用失败:', err);
+        throw err;
+      }
+    }
+
+    // 非 Electron 环境，提示用户
+    console.warn('[Chat] 图片保存功能仅在 Electron 桌面应用中可用');
+    throw new Error('图片保存功能仅在桌面应用中可用');
   }
 
   /**
