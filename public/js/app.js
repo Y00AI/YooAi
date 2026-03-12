@@ -213,7 +213,7 @@
   }
 
   /**
-   * Load chat history from gateway
+   * Load chat history from backend API (JSONL files)
    * @param {boolean} loadMore - 是否为加载更多（追加到顶部）
    */
   async function loadChatHistory(loadMore = false) {
@@ -234,13 +234,21 @@
 
       isLoadingMore = true;
 
-      // 构建请求参数（Gateway 不支持 offset，只用 limit）
-      const requestParams = {
-        sessionKey: sessionKey,
-        limit: HISTORY_LIMIT
-      };
+      // 使用新的 /api/chat/:sessionKey API，支持 offset 分页
+      const url = `/api/chat/${encodeURIComponent(sessionKey)}?offset=${historyOffset}&limit=${HISTORY_LIMIT}`;
+      const response = await fetch(url);
 
-      const result = await Gateway.request('chat.history', requestParams);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.error) {
+        console.error('[App] Chat API error:', result.error);
+        hasMoreHistory = false;
+        return;
+      }
 
       if (result && Array.isArray(result.messages)) {
         // 首次加载：清空现有消息
@@ -250,6 +258,7 @@
 
         const allMessages = result.messages;
         const totalReturned = allMessages.length;
+        const totalAvailable = result.total || 0;
 
         // 过滤出尚未加载的消息
         const newMessages = [];
@@ -269,19 +278,13 @@
           cachedMessages = [...allMessages];
         } else {
           // 加载更多：合并到缓存开头（保持时间顺序）
-          // 注意：allMessages 是按时间从旧到新排序的
           const existingIds = new Set(cachedMessages.map(m => getMessageId(m)));
           const trulyNew = newMessages.filter(m => !existingIds.has(getMessageId(m)));
           cachedMessages = [...trulyNew, ...cachedMessages];
         }
 
-        // 如果所有返回的消息都已经被加载过，说明没有更多历史了
-        if (loadMore && newCount === 0) {
-          hasMoreHistory = false;
-        } else if (!loadMore) {
-          // 首次加载时，如果返回数量等于限制，可能还有更多
-          hasMoreHistory = totalReturned >= HISTORY_LIMIT;
-        }
+        // 根据 API 返回的 hasMore 判断是否还有更多历史
+        hasMoreHistory = result.hasMore === true;
 
         // 如果是加载更多，需要保持滚动位置
         const container = document.getElementById('messagesContainer');
@@ -310,8 +313,8 @@
           }
         }
 
-        // 更新偏移量（用于显示）
-        historyOffset = loadedMessageIds.size;
+        // 更新偏移量（用于下次分页）
+        historyOffset += newCount;
 
         // 首次加载后，滚动到底部并加载时间线
         if (!loadMore) {
@@ -321,10 +324,8 @@
           }
         }
       } else {
-        // 首次加载时如果没有消息，也不应该阻止按钮显示
-        if (!loadMore) {
-          hasMoreHistory = false;
-        }
+        // 没有消息
+        hasMoreHistory = false;
       }
     } catch (err) {
       console.error('[App] Failed to load chat history:', err, err?.message);

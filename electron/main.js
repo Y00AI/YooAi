@@ -316,6 +316,102 @@ function getTimelineData(sessionKey) {
   };
 }
 
+// ── Chat history from JSONL ───────────────────────────────────────────────────
+/**
+ * 从 JSONL 文件解析聊天消息
+ * @param {Array} records - JSONL 记录数组
+ * @param {number} offset - 跳过前 N 条消息（从最新开始算）
+ * @param {number} limit - 返回最多 N 条消息
+ * @returns {{ messages: Array, total: number, hasMore: boolean }}
+ */
+function parseChatMessagesFromJsonl(records, offset, limit) {
+  // 提取所有消息类型的记录
+  const allMessages = [];
+
+  for (const record of records) {
+    if (record.type !== 'message') continue;
+
+    const msg = record.message || {};
+    const role = msg.role;
+
+    // 只处理 user, assistant, toolResult
+    if (!['user', 'assistant', 'toolResult'].includes(role)) continue;
+
+    // 解析时间戳
+    const timestamp = parseTimestamp(msg.timestamp || record.timestamp);
+
+    // 构建消息对象
+    const message = {
+      role,
+      content: msg.content || [],
+      timestamp,
+      id: record.id || `${timestamp}-${role}`,
+      stopReason: msg.stopReason || null
+    };
+
+    // toolResult 特殊字段
+    if (role === 'toolResult') {
+      message.toolName = msg.toolName || msg.tool_name || 'unknown';
+      message.toolCallId = msg.toolCallId || msg.tool_call_id || null;
+      message.isError = msg.isError || msg.is_error || false;
+    }
+
+    // assistant 的 usage
+    if (role === 'assistant' && msg.usage) {
+      message.usage = msg.usage;
+    }
+
+    allMessages.push(message);
+  }
+
+  // 按时间戳排序（从旧到新）
+  allMessages.sort((a, b) => a.timestamp - b.timestamp);
+
+  const total = allMessages.length;
+
+  // 应用分页（从后往前取，返回最新的消息）
+  // offset=0, limit=100 → 返回最后 100 条
+  // offset=100, limit=100 → 返回倒数 101-200 条
+  const startIndex = Math.max(0, total - offset - limit);
+  const endIndex = total - offset;
+  const messages = allMessages.slice(startIndex, endIndex);
+
+  return {
+    messages,
+    total,
+    hasMore: startIndex > 0
+  };
+}
+
+/**
+ * 获取聊天历史数据
+ * @param {string} sessionKey - 会话键
+ * @param {number} offset - 跳过前 N 条（从最新开始算）
+ * @param {number} limit - 返回最多 N 条
+ */
+function getChatHistory(sessionKey, offset = 0, limit = 100) {
+  // 加载会话汇总
+  const sessions = loadSessionsJson();
+  const session = sessions[sessionKey] || {};
+
+  const sessionId = session.sessionId;
+  if (!sessionId) {
+    return { error: 'Session not found', sessionKey, messages: [], total: 0, hasMore: false };
+  }
+
+  // 加载 JSONL 记录
+  const records = loadJsonl(sessionId);
+  const { messages, total, hasMore } = parseChatMessagesFromJsonl(records, offset, limit);
+
+  return {
+    messages,
+    total,
+    hasMore,
+    sessionKey,
+    sessionId
+  };
+}
+
 // ── HTTP + WebSocket server ───────────────────────────────────────────────────
 function startBackendServer() {
   server = createServer((req, res) => {
@@ -362,6 +458,28 @@ function startBackendServer() {
       const sessionKey = decodeURIComponent(timelineMatch[1]);
       try {
         const data = getTimelineData(sessionKey);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(data));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message || String(err) }));
+      }
+      return;
+    }
+
+    // Chat History API - 从 JSONL 文件获取聊天历史
+    const chatMatch = req.url.match(/^\/api\/chat\/([^?]+)(?:\?(.*))?$/);
+    if (chatMatch) {
+      const sessionKey = decodeURIComponent(chatMatch[1]);
+      const queryString = chatMatch[2] || '';
+
+      // 解析查询参数
+      const params = new URLSearchParams(queryString);
+      const offset = parseInt(params.get('offset') || '0', 10);
+      const limit = parseInt(params.get('limit') || '100', 10);
+
+      try {
+        const data = getChatHistory(sessionKey, offset, limit);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(data));
       } catch (err) {
