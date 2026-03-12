@@ -306,6 +306,39 @@
   margin-top: 0;
 }
 
+/* === MARKDOWN TABLE === */
+.message-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.message-content table th,
+.message-content table td {
+  padding: 8px 12px;
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.message-content table th {
+  background: rgba(0, 0, 0, 0.3);
+  font-weight: 600;
+  color: #a0f0f0;
+  border-bottom: 2px solid rgba(160, 240, 240, 0.3);
+}
+
+.message-content table tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.message-content table tr:hover td {
+  background: rgba(160, 240, 240, 0.08);
+}
+
 /* === STREAMING INDICATOR === */
 .message.streaming .message-bubble::after {
   content: '▌';
