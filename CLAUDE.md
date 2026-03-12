@@ -95,11 +95,42 @@ public/
    - `appendToStream()` - 流式追加文本块
    - `endStream()` - 结束流式消息
    - `appendToolCall()` / `appendToolResult()` - 工具卡片处理
+   - `prependMessage()` / `prependElement()` - 插入到顶部（用于加载更多历史）
    - 使用 marked.js 解析 Markdown，DOMPurify 进行消毒
 
 4. **ChatToolCards** (`chat-tool-cards.js`) - 工具调用可视化：
    - 不同工具类型显示不同颜色
    - 状态指示器（运行中/已完成/失败）
+
+5. **ImageInput** (`image-input.js`) - 图片输入处理：
+   - 支持拖拽、粘贴、点击选择图片
+   - 自动压缩（最大 1920px，质量 0.8）
+   - 最多 5 张，单张最大 10MB
+   - 通过 `window.yooai.saveImage()` 保存到 `~/.openclaw/workspace/images/`
+
+### 消息过滤功能
+
+聊天面板支持消息类型过滤，状态持久化到 `localStorage`：
+
+```javascript
+// 过滤状态存储键
+const FILTER_STORAGE_KEY = 'yooai_message_filter';
+
+// 过滤选项（默认全部关闭）
+MessageFilter = {
+  showThinking: false,    // 思考过程
+  showToolCalls: false,   // 工具调用
+  showToolResults: false  // 工具结果
+}
+```
+
+默认只显示：用户消息 + 模型的 text 内容。
+
+### 历史消息加载
+
+- 首次加载请求最近 100 条消息
+- Gateway API 不支持 `offset` 分页，无法加载更早历史
+- 使用 `loadedMessageIds` Set 去重，防止重复显示
 
 ### OpenClaw 网关协议
 
@@ -149,9 +180,11 @@ const status = await Gateway.request('status', {});
 
 ## 关键文件
 
-- `electron/main.js` - 主进程：WebSocket 代理、认证握手、Timeline API
-- `public/js/app.js` - 主入口：初始化、历史加载、协调模块
+- `electron/main.js` - 主进程：WebSocket 代理、认证握手、Timeline API、图片保存 IPC
+- `electron/preload.js` - 渲染进程桥接：暴露 `window.yooai` API
+- `public/js/app.js` - 主入口：初始化、历史加载、消息过滤、协调模块
 - `public/js/gateway.js` - WebSocket 连接、消息分发、异步请求
+- `public/js/image-input.js` - 图片输入：拖拽、粘贴、压缩、预览
 - `public/js/core/event-router.js` - 事件路由、智能体事件处理、时间线统计
 - `public/js/core/mood-system.js` - 情绪系统、空闲检测、情绪回调
 - `public/js/chat/chat-core.js` - 聊天主控制器
@@ -191,8 +224,10 @@ const status = await Gateway.request('status', {});
 - `window.Gateway` - WebSocket 连接管理
 - `window.Chat` - 聊天面板控制器
 - `window.ChatStatus` - 智能体状态显示
+- `window.ImageInput` - 图片输入处理
 - `window.MoodSystem` - 情绪系统
 - `window.EventRouter` - 事件路由
 - `window.SessionManager` - 会话管理
 - `window.CyborgMoods` / `CyborgEffects` / `CyborgParticles` - 灵魂动画模块
-- `window.YooAI.TimelineStore` / `TimelineRenderer` / `TaskProgress` - 时间线模块
+- `window.YooAI` - 主应用入口（init, loadChatHistory, toggleMessageFilter）
+- `window.yooai` - Electron IPC 桥接（saveImage, selectImage, minimize, maximize, closeWindow, openDevTools）
