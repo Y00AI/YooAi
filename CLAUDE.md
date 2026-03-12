@@ -30,6 +30,7 @@ bun run build:linux  # 构建 Linux AppImage
   - `GET /api/config` - 获取网关 host/port/hasToken
   - `POST /api/set-token` - 保存认证令牌
   - `GET /api/memory` - 列出工作区记忆文件
+  - `GET /api/timeline/:sessionKey` - 获取时间线历史数据（从 JSONL 解析）
 
 ### 前端结构 (`public/`)
 ```
@@ -39,16 +40,40 @@ public/
 │   ├── main.css         # 核心样式，玻璃态效果，动画
 │   └── chat.css         # 聊天面板专用样式
 └── js/
-    ├── app.js           # 主应用逻辑，事件路由，情绪状态，时间线
-    ├── gateway.js       # WebSocket 连接管理
-    ├── chat.js          # 聊天面板（消息、流式输出、输入）
-    ├── chat-status.js   # 智能体状态显示（空闲/思考/输出中）
-    ├── chat-message-utils.js  # 日期分割线、输入指示器、消息分组
-    ├── chat-tool-cards.js     # 工具调用可视化
-    ├── chat-normalizer.js     # 消息规范化为 ChatItem 格式
-    ├── canvas-bg.js     # 背景浮游球动画
-    ├── canvas-brain.js  # 神经网络记忆可视化
-    └── canvas-cyborg.js # 智能体灵魂粒子动画（7种情绪状态）
+    ├── app.js                    # 主应用入口，历史加载，协调模块
+    ├── gateway.js              # WebSocket 连接管理，消息分发
+    ├── chat.js                  # 聊天面板控制器
+    ├── chat-status.js          # 智能体状态显示（空闲/思考/输出中）
+    ├── chat-message-utils.js   # 日期分割线、输入指示器
+    ├── chat-tool-cards.js      # 工具调用可视化
+    ├── chat-normalizer.js      # 消息规范化
+    ├── canvas-bg.js            # 背景浮游球动画
+    ├── canvas-brain.js         # 神经网络记忆可视化
+    │
+    ├── canvas/cyborg/          # 智能体灵魂动画模块
+    │   ├── cyborg-core.js      # 主控制器
+    │   ├── cyborg-moods.js     # 7种情绪状态定义
+    │   ├── cyborg-effects.js   # 特效渲染
+    │   └── cyborg-particles.js # 粒子系统
+    │
+    ├── core/                   # 核心模块
+    │   ├── event-router.js     # 事件路由，消息处理
+    │   ├── mood-system.js      # 情绪系统
+    │   └── session-manager.js  # 会话管理
+    │
+    ├── timeline/              # 时间线模块
+    │   ├── timeline-store.js   # 状态存储
+    │   ├── timeline-renderer.js # UI 渲染
+    │   └── timeline-utils.js   # 工具函数
+    │
+    ├── chat/                   # 聊天模块
+    │   ├── chat-core.js        # 主控制器
+    │   ├── chat-renderer.js    # 消息渲染
+    │   └── chat-stream.js      # 流式输出
+    │
+    └── ui/                    # UI 组件
+        ├── floating-bits.js    # 浮游粒子
+        └── task-progress.js    # 任务进度条
 ```
 
 ### 聊天模块架构
@@ -107,26 +132,67 @@ const status = await Gateway.request('status', {});
 ### Canvas 动画
 
 - **canvas-bg.js** - 浮游球背景，使用 CSS 关键帧动画
-- **canvas-cyborg.js** - 粒子系统，7种情绪状态：`sleeping`、`thinking`、`focused`、`excited`、`frustrated`、`vibing`、`exhausted`。通过 `window._setCyborgMood(mood)` 和 `window._soulEnergy` 控制
 - **canvas-brain.js** - 神经网络可视化。通过 `window._brainFire(nodeId, intensity)` 触发节点。颜色：蓝色=回忆，黄色=活跃，粉色=新建
+- **canvas/cyborg/** - 智能体灵魂粒子动画（IIFE 模式）：
+  - `cyborg-core.js` - 主控制器，通过 `window._setCyborgMood(mood)` 和 `window._soulEnergy` 控制
+  - `cyborg-moods.js` - 7种情绪状态定义：`sleeping`、`thinking`、`focused`、`excited`、`frustrated`、`vibing`、`exhausted`
+  - `cyborg-effects.js` - 特效渲染器（辉光点、星形、光线）
+  - `cyborg-particles.js` - 粒子池管理
+
+### 时间线模块
+
+- **timeline-store.js** - 状态管理：任务计数、消息计数、工具计数、错误计数、Token 统计
+- **timeline-renderer.js** - UI 渲染：时间线条目、标签（AGENT/CHAT/TOOL/ERR）
+- **timeline-utils.js** - 工具函数：时间格式化、持续时间计算
+
+时间线统计通过 `EventRouter.getStats()` 获取，历史数据从 `/api/timeline/:sessionKey` API 加载。
 
 ## 关键文件
 
-- `electron/main.js:103-183` - WebSocket 代理与 OpenClaw 认证握手
-- `public/js/app.js:527-629` - 智能体事件处理（生命周期 + assistant 流）
-- `public/js/app.js:631-695` - Chat 事件处理，含 runId 去重
-- `public/js/app.js:88-234` - `loadChatHistory()` 连接时加载聊天历史
-- `public/js/chat.js:199-240` - `appendToStream()` 流式消息处理
-- `public/js/chat.js:265-333` - 工具调用/结果卡片处理
-- `public/js/gateway.js:93-128` - `request()` 方法用于异步网关请求
-- `public/js/gateway.js:133-155` - 消息处理与分发
+- `electron/main.js` - 主进程：WebSocket 代理、认证握手、Timeline API
+- `public/js/app.js` - 主入口：初始化、历史加载、协调模块
+- `public/js/gateway.js` - WebSocket 连接、消息分发、异步请求
+- `public/js/core/event-router.js` - 事件路由、智能体事件处理、时间线统计
+- `public/js/core/mood-system.js` - 情绪系统、空闲检测、情绪回调
+- `public/js/chat/chat-core.js` - 聊天主控制器
+- `public/js/chat/chat-stream.js` - 流式消息处理
+- `public/js/canvas/cyborg/cyborg-core.js` - 智能体灵魂动画主控制器
 
 ## 开发备注
 
 - 使用 Bun 作为 JavaScript 运行时（非 Node.js）
 - Canvas 动画使用 requestAnimationFrame 循环
-- 情绪条通过 app.js 中的 `onEvent()` 回调响应智能体事件
+- 情绪条通过 MoodSystem.onEvent() 响应智能体事件
 - 大脑记忆可视化从 `~/.openclaw/workspace/memory/` 读取
 - 聊天支持 Markdown（通过 marked.js）和消毒（通过 DOMPurify）
 - 消息去重使用 `processedRunIds` 和 `streamedRunIds` Set 防止重复显示
 - UI 为中文 (zh-CN)
+
+### 模块模式
+
+前端 JS 模块使用 **IIFE (Immediately Invoked Function Expression)** 模式，通过全局命名空间暴露 API：
+
+```javascript
+// 模块定义
+(function(global) {
+  'use strict';
+  // 私有变量和函数...
+
+  // 暴露到全局
+  window.ModuleName = {
+    init,
+    publicMethod,
+    // ...
+  };
+})(typeof window !== 'undefined' ? window : this);
+```
+
+主要模块的全局命名空间：
+- `window.Gateway` - WebSocket 连接管理
+- `window.Chat` - 聊天面板控制器
+- `window.ChatStatus` - 智能体状态显示
+- `window.MoodSystem` - 情绪系统
+- `window.EventRouter` - 事件路由
+- `window.SessionManager` - 会话管理
+- `window.CyborgMoods` / `CyborgEffects` / `CyborgParticles` - 灵魂动画模块
+- `window.YooAI.TimelineStore` / `TimelineRenderer` / `TaskProgress` - 时间线模块
