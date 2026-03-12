@@ -48,6 +48,120 @@
   let logs = [];
   let msgCount = 0;
 
+  // === INFINITE SCROLL STATE ===
+  const HISTORY_LIMIT = 100;
+  let historyOffset = 0;
+  let isLoadingMore = false;
+  let hasMoreHistory = true;
+  let loadedMessageIds = new Set(); // 已加载消息的唯一标识
+  let cachedMessages = []; // 缓存原始消息数据，用于重新渲染
+
+  // === 消息过滤状态 ===
+  const FILTER_STORAGE_KEY = 'yooai_message_filter';
+
+  const MessageFilter = {
+    showThinking: false,  // 是否显示思考过程
+    showToolCalls: false, // 是否显示工具调用
+    showToolResults: false, // 是否显示工具结果
+
+    // 从 localStorage 加载状态
+    load() {
+      try {
+        const saved = localStorage.getItem(FILTER_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          this.showThinking = !!parsed.showThinking;
+          this.showToolCalls = !!parsed.showToolCalls;
+          this.showToolResults = !!parsed.showToolResults;
+        }
+      } catch (e) {
+        console.warn('[App] Failed to load filter state:', e);
+      }
+    },
+
+    // 保存状态到 localStorage
+    save() {
+      try {
+        localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+          showThinking: this.showThinking,
+          showToolCalls: this.showToolCalls,
+          showToolResults: this.showToolResults
+        }));
+      } catch (e) {
+        console.warn('[App] Failed to save filter state:', e);
+      }
+    },
+
+    // 切换过滤选项
+    toggle(type) {
+      if (type === 'thinking') {
+        this.showThinking = !this.showThinking;
+      } else if (type === 'toolCalls') {
+        this.showToolCalls = !this.showToolCalls;
+      } else if (type === 'toolResults') {
+        this.showToolResults = !this.showToolResults;
+      }
+      // 保存状态到 localStorage
+      this.save();
+      // 更新 UI 复选框状态
+      updateFilterUI();
+      // 重新渲染消息
+      reloadMessages();
+    },
+
+    // 设置过滤选项
+    set(type, value) {
+      if (type === 'thinking') {
+        this.showThinking = value;
+      } else if (type === 'toolCalls') {
+        this.showToolCalls = value;
+      } else if (type === 'toolResults') {
+        this.showToolResults = value;
+      }
+    },
+
+    // 检查是否应该显示某类型内容
+    shouldShow(type) {
+      if (type === 'thinking') return this.showThinking;
+      if (type === 'toolCall') return this.showToolCalls;
+      if (type === 'toolResult') return this.showToolResults;
+      return true; // 默认显示
+    }
+  };
+
+  /**
+   * 重新加载消息（根据当前过滤设置）
+   */
+  function reloadMessages() {
+    if (typeof Chat !== 'undefined') {
+      Chat.clear();
+
+      // 重新渲染缓存的消息
+      for (const msg of cachedMessages) {
+        renderMessage(msg, true);
+      }
+
+      // 滚动到底部
+      const container = document.getElementById('messagesContainer');
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+  }
+
+  /**
+   * 更新过滤 UI 状态
+   */
+  function updateFilterUI() {
+    const thinkingCheckbox = document.getElementById('filterThinking');
+    const toolCallsCheckbox = document.getElementById('filterToolCalls');
+    const toolResultsCheckbox = document.getElementById('filterToolResults');
+
+    if (thinkingCheckbox) thinkingCheckbox.checked = MessageFilter.showThinking;
+    if (toolCallsCheckbox) toolCallsCheckbox.checked = MessageFilter.showToolCalls;
+    if (toolResultsCheckbox) toolResultsCheckbox.checked = MessageFilter.showToolResults;
+  }
+
   // === INIT ===
   function init() {
     initTitlebar();
@@ -59,7 +173,12 @@
     if (typeof EventRouter !== 'undefined') EventRouter.init();
     if (typeof SessionManager !== 'undefined') SessionManager.init();
 
+    // 加载保存的过滤状态
+    MessageFilter.load();
+    updateFilterUI();
+
     initChatHandlers();
+    initLoadMoreButton();
 
     // Initialize background canvas (cyborg and brain auto-init)
     if (typeof initBg === 'function') initBg('bgCanvas');
@@ -83,144 +202,439 @@
   }
 
   /**
-   * Load chat history from gateway
+   * 生成消息唯一标识
    */
-  async function loadChatHistory() {
+  function getMessageId(msg) {
+    if (!msg) return null;
+    const timestamp = msg.timestamp || 0;
+    const role = msg.role || 'unknown';
+    // 使用 timestamp + role 作为唯一标识
+    return `${timestamp}-${role}`;
+  }
+
+  /**
+   * Load chat history from gateway
+   * @param {boolean} loadMore - 是否为加载更多（追加到顶部）
+   */
+  async function loadChatHistory(loadMore = false) {
+    if (isLoadingMore) return;
+
     try {
       const sessionKey = typeof SessionManager !== 'undefined'
         ? SessionManager.getCurrentSessionKey()
         : 'agent:main:main';
 
-      const result = await Gateway.request('chat.history', {
+      // 如果是首次加载，重置状态
+      if (!loadMore) {
+        historyOffset = 0;
+        hasMoreHistory = true;
+        loadedMessageIds.clear(); // 清空已加载消息记录
+        cachedMessages = []; // 清空消息缓存
+      }
+
+      isLoadingMore = true;
+
+      // 构建请求参数（Gateway 不支持 offset，只用 limit）
+      const requestParams = {
         sessionKey: sessionKey,
-        limit: 100
-      });
+        limit: HISTORY_LIMIT
+      };
+
+      const result = await Gateway.request('chat.history', requestParams);
 
       if (result && Array.isArray(result.messages)) {
-        // Clear existing messages first
-        if (typeof Chat !== 'undefined') {
+        // 首次加载：清空现有消息
+        if (!loadMore && typeof Chat !== 'undefined') {
           Chat.clear();
         }
 
-        let loadedCount = 0;
+        const allMessages = result.messages;
+        const totalReturned = allMessages.length;
 
-        // Add each message
-        for (const msg of result.messages) {
-          if (!msg || (!msg.content && !msg.text)) continue;
-
-          const content = msg.content;
-          const role = msg.role || 'user';
-          const timestamp = msg.timestamp || Date.now();
-
-          // 跳过 assistant 的中间过程（只显示最终结果）
-          if (role === 'assistant' && msg.stopReason && msg.stopReason !== 'stop') {
-            continue;
+        // 过滤出尚未加载的消息
+        const newMessages = [];
+        for (const msg of allMessages) {
+          const msgId = getMessageId(msg);
+          if (msgId && !loadedMessageIds.has(msgId)) {
+            newMessages.push(msg);
+            loadedMessageIds.add(msgId);
           }
+        }
 
-          // 处理 toolResult 消息（role === 'toolResult'）
-          if (role === 'toolResult') {
-            if (typeof ChatToolCards !== 'undefined') {
-              const resultText = Array.isArray(content)
-                ? content.map(c => c.text || '').join('')
-                : (typeof content === 'string' ? content : JSON.stringify(content));
+        const newCount = newMessages.length;
 
-              const card = ChatToolCards.createToolResultCard({
-                name: msg.toolName || msg.tool_name || 'Tool',
-                text: resultText,
-                success: !msg.isError && !msg.is_error
-              });
+        // 缓存原始消息数据（用于过滤时重新渲染）
+        if (!loadMore) {
+          // 首次加载：按原始顺序缓存
+          cachedMessages = [...allMessages];
+        } else {
+          // 加载更多：合并到缓存开头（保持时间顺序）
+          // 注意：allMessages 是按时间从旧到新排序的
+          const existingIds = new Set(cachedMessages.map(m => getMessageId(m)));
+          const trulyNew = newMessages.filter(m => !existingIds.has(getMessageId(m)));
+          cachedMessages = [...trulyNew, ...cachedMessages];
+        }
 
-              if (card && typeof Chat !== 'undefined') {
-                Chat.appendElement(card);
-                loadedCount++;
-              }
-            }
-            continue;
-          }
+        // 如果所有返回的消息都已经被加载过，说明没有更多历史了
+        if (loadMore && newCount === 0) {
+          hasMoreHistory = false;
+        } else if (!loadMore) {
+          // 首次加载时，如果返回数量等于限制，可能还有更多
+          hasMoreHistory = totalReturned >= HISTORY_LIMIT;
+        }
 
-          // 字符串内容：直接添加
-          if (typeof content === 'string') {
-            if (content) {
-              Chat.addMessage({ role, content, timestamp });
-              loadedCount++;
-            }
-            continue;
-          }
+        // 如果是加载更多，需要保持滚动位置
+        const container = document.getElementById('messagesContainer');
+        const oldScrollHeight = container ? container.scrollHeight : 0;
 
-          // 非数组内容
-          if (!Array.isArray(content)) {
-            const text = msg.text || JSON.stringify(content);
-            if (text) {
-              Chat.addMessage({ role, content: text, timestamp });
-              loadedCount++;
-            }
-            continue;
-          }
-
-          // 数组内容：分类处理
-          const textParts = [];
-          const specialItems = [];
-
-          for (const item of content) {
-            if (!item) continue;
-
-            const itemType = item.type;
-
-            if (itemType === 'text') {
-              textParts.push(item.text || '');
-            } else if (itemType === 'toolCall' || itemType === 'tool_use') {
-              specialItems.push({
-                type: 'toolCall',
-                name: item.name || item.tool_name || 'Tool',
-                args: item.input || item.arguments || item.args
-              });
-            } else if (itemType === 'thinking') {
-              specialItems.push({
-                type: 'thinking',
-                content: item.thinking || item.text || ''
-              });
+        // 反向遍历，如果是加载更多则插入到顶部
+        if (loadMore && newCount > 0) {
+          // 从旧到新遍历，插入到顶部
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            const msg = newMessages[i];
+            if (msg && (msg.content || msg.text)) {
+              renderMessageToTop(msg);
             }
           }
-
-          // 添加文本消息（如果有）
-          const textContent = textParts.join('');
-          if (textContent) {
-            Chat.addMessage({ role, content: textContent, timestamp });
-            loadedCount++;
+          // 恢复滚动位置
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - oldScrollHeight;
           }
-
-          // 添加特殊类型卡片（toolCall、thinking）
-          for (const item of specialItems) {
-            if (typeof ChatToolCards === 'undefined') {
-              continue;
-            }
-
-            let card = null;
-            if (item.type === 'toolCall') {
-              card = ChatToolCards.createToolCallCard({
-                name: item.name,
-                args: item.args,
-                status: 'completed'
-              });
-            } else if (item.type === 'thinking') {
-              card = ChatToolCards.createThinkingCard({
-                content: item.content,
-                summary: 'Thinking'
-              });
-            }
-
-            if (card && typeof Chat !== 'undefined') {
-              Chat.appendElement(card);
-              loadedCount++;
+        } else if (!loadMore) {
+          // 正常加载，追加到底部
+          for (const msg of newMessages) {
+            if (msg && (msg.content || msg.text)) {
+              renderMessage(msg);
             }
           }
         }
 
-        // 从后端 API 加载时间线历史
-        loadTimelineHistory();
+        // 更新偏移量（用于显示）
+        historyOffset = loadedMessageIds.size;
+
+        // 首次加载后，滚动到底部并加载时间线
+        if (!loadMore) {
+          loadTimelineHistory();
+          if (container) {
+            container.scrollTop = container.scrollHeight;
+          }
+        }
+      } else {
+        // 首次加载时如果没有消息，也不应该阻止按钮显示
+        if (!loadMore) {
+          hasMoreHistory = false;
+        }
       }
     } catch (err) {
-      // 静默处理加载历史失败
+      console.error('[App] Failed to load chat history:', err, err?.message);
+      // 加载更多失败时，设置 hasMoreHistory = false 避免重复尝试
+      if (loadMore) {
+        hasMoreHistory = false;
+      } else {
+        hasMoreHistory = false;
+      }
+    } finally {
+      isLoadingMore = false;
+      updateLoadMoreButton();
+    }
+  }
+
+  /**
+   * 渲染单条消息（追加到底部）
+   * @param {Object} msg - 消息对象
+   * @param {boolean} applyFilter - 是否应用过滤（默认 true）
+   */
+  function renderMessage(msg, applyFilter = true) {
+    if (!msg || (!msg.content && !msg.text)) return;
+
+    const content = msg.content;
+    const role = msg.role || 'user';
+    const timestamp = msg.timestamp || Date.now();
+
+    // 处理 toolResult 消息
+    if (role === 'toolResult') {
+      // 检查过滤设置
+      if (applyFilter && !MessageFilter.shouldShow('toolResult')) {
+        return;
+      }
+      if (typeof ChatToolCards !== 'undefined') {
+        const resultText = Array.isArray(content)
+          ? content.map(c => c.text || '').join('')
+          : (typeof content === 'string' ? content : JSON.stringify(content));
+
+        const card = ChatToolCards.createToolResultCard({
+          name: msg.toolName || msg.tool_name || 'Tool',
+          text: resultText,
+          success: !msg.isError && !msg.is_error
+        });
+
+        if (card && typeof Chat !== 'undefined') {
+          Chat.appendElement(card);
+        }
+      }
+      return;
+    }
+
+    // 字符串内容 - 始终显示
+    if (typeof content === 'string') {
+      if (content && typeof Chat !== 'undefined') {
+        Chat.addMessage({ role, content, timestamp });
+      }
+      return;
+    }
+
+    // 非数组内容 - 始终显示
+    if (!Array.isArray(content)) {
+      const text = msg.text || JSON.stringify(content);
+      if (text && typeof Chat !== 'undefined') {
+        Chat.addMessage({ role, content: text, timestamp });
+      }
+      return;
+    }
+
+    // 数组内容 - 根据过滤设置渲染
+    renderArrayContent(content, role, timestamp, applyFilter);
+  }
+
+  /**
+   * 渲染消息到顶部（用于加载更多）
+   * @param {Object} msg - 消息对象
+   * @param {boolean} applyFilter - 是否应用过滤（默认 true）
+   */
+  function renderMessageToTop(msg, applyFilter = true) {
+    if (!msg || (!msg.content && !msg.text)) return;
+
+    const content = msg.content;
+    const role = msg.role || 'user';
+    const timestamp = msg.timestamp || Date.now();
+
+    // 处理 toolResult 消息
+    if (role === 'toolResult') {
+      // 检查过滤设置
+      if (applyFilter && !MessageFilter.shouldShow('toolResult')) {
+        return;
+      }
+      if (typeof ChatToolCards !== 'undefined') {
+        const resultText = Array.isArray(content)
+          ? content.map(c => c.text || '').join('')
+          : (typeof content === 'string' ? content : JSON.stringify(content));
+
+        const card = ChatToolCards.createToolResultCard({
+          name: msg.toolName || msg.tool_name || 'Tool',
+          text: resultText,
+          success: !msg.isError && !msg.is_error
+        });
+
+        if (card && typeof Chat !== 'undefined' && typeof Chat.prependElement === 'function') {
+          Chat.prependElement(card);
+        }
+      }
+      return;
+    }
+
+    // 字符串内容 - 始终显示
+    if (typeof content === 'string') {
+      if (content && typeof Chat !== 'undefined' && typeof Chat.prependMessage === 'function') {
+        Chat.prependMessage({ role, content, timestamp });
+      }
+      return;
+    }
+
+    // 非数组内容 - 始终显示
+    if (!Array.isArray(content)) {
+      const text = msg.text || JSON.stringify(content);
+      if (text && typeof Chat !== 'undefined' && typeof Chat.prependMessage === 'function') {
+        Chat.prependMessage({ role, content: text, timestamp });
+      }
+      return;
+    }
+
+    // 数组内容 - 根据过滤设置渲染
+    const textParts = [];
+    const specialItems = [];
+
+    for (const item of content) {
+      if (!item) continue;
+      const itemType = item.type;
+
+      if (itemType === 'text') {
+        // text 始终显示
+        textParts.push(item.text || '');
+      } else if (itemType === 'toolCall' || itemType === 'tool_use') {
+        // toolCall 根据过滤设置
+        if (!applyFilter || MessageFilter.shouldShow('toolCall')) {
+          specialItems.push({
+            type: 'toolCall',
+            name: item.name || item.tool_name || 'Tool',
+            args: item.input || item.arguments || item.args
+          });
+        }
+      } else if (itemType === 'thinking') {
+        // thinking 根据过滤设置
+        if (!applyFilter || MessageFilter.shouldShow('thinking')) {
+          specialItems.push({
+            type: 'thinking',
+            content: item.thinking || item.text || ''
+          });
+        }
+      }
+    }
+
+    // 添加文本消息
+    const textContent = textParts.join('');
+    if (textContent && typeof Chat !== 'undefined' && typeof Chat.prependMessage === 'function') {
+      Chat.prependMessage({ role, content: textContent, timestamp });
+    }
+
+    // 添加特殊卡片
+    for (const item of specialItems) {
+      if (typeof ChatToolCards === 'undefined') continue;
+
+      let card = null;
+      if (item.type === 'toolCall') {
+        card = ChatToolCards.createToolCallCard({
+          name: item.name,
+          args: item.args,
+          status: 'completed'
+        });
+      } else if (item.type === 'thinking') {
+        card = ChatToolCards.createThinkingCard({
+          content: item.content,
+          summary: 'Thinking'
+        });
+      }
+
+      if (card && typeof Chat !== 'undefined' && typeof Chat.prependElement === 'function') {
+        Chat.prependElement(card);
+      }
+    }
+  }
+
+  /**
+   * 渲染数组内容（追加到底部）
+   * @param {Array} content - 内容数组
+   * @param {string} role - 角色
+   * @param {number} timestamp - 时间戳
+   * @param {boolean} applyFilter - 是否应用过滤（默认 true）
+   */
+  function renderArrayContent(content, role, timestamp, applyFilter = true) {
+    const textParts = [];
+    const specialItems = [];
+
+    for (const item of content) {
+      if (!item) continue;
+      const itemType = item.type;
+
+      if (itemType === 'text') {
+        // text 始终显示
+        textParts.push(item.text || '');
+      } else if (itemType === 'toolCall' || itemType === 'tool_use') {
+        // toolCall 根据过滤设置
+        if (!applyFilter || MessageFilter.shouldShow('toolCall')) {
+          specialItems.push({
+            type: 'toolCall',
+            name: item.name || item.tool_name || 'Tool',
+            args: item.input || item.arguments || item.args
+          });
+        }
+      } else if (itemType === 'thinking') {
+        // thinking 根据过滤设置
+        if (!applyFilter || MessageFilter.shouldShow('thinking')) {
+          specialItems.push({
+            type: 'thinking',
+            content: item.thinking || item.text || ''
+          });
+        }
+      }
+    }
+
+    // 添加文本消息 - 始终显示
+    const textContent = textParts.join('');
+    if (textContent && typeof Chat !== 'undefined') {
+      Chat.addMessage({ role, content: textContent, timestamp });
+    }
+
+    // 添加特殊卡片
+    for (const item of specialItems) {
+      if (typeof ChatToolCards === 'undefined') continue;
+
+      let card = null;
+      if (item.type === 'toolCall') {
+        card = ChatToolCards.createToolCallCard({
+          name: item.name,
+          args: item.args,
+          status: 'completed'
+        });
+      } else if (item.type === 'thinking') {
+        card = ChatToolCards.createThinkingCard({
+          content: item.content,
+          summary: 'Thinking'
+        });
+      }
+
+      if (card && typeof Chat !== 'undefined') {
+        Chat.appendElement(card);
+      }
+    }
+  }
+
+  /**
+   * 初始化"加载更多"按钮
+   */
+  function initLoadMoreButton() {
+    const btn = document.getElementById('loadMoreBtn');
+    if (!btn) return;
+
+    btn.addEventListener('click', function() {
+      if (isLoadingMore || !hasMoreHistory) return;
+      loadChatHistory(true);
+    });
+  }
+
+  /**
+   * 更新"加载更多"按钮状态
+   */
+  function updateLoadMoreButton() {
+    const wrapper = document.getElementById('loadMoreWrapper');
+    const btn = document.getElementById('loadMoreBtn');
+    const textEl = btn ? btn.querySelector('.load-more-text') : null;
+    const spinnerEl = btn ? btn.querySelector('.load-more-spinner') : null;
+
+    if (!wrapper || !btn) {
+      return;
+    }
+
+    // 始终显示按钮区域
+    wrapper.style.display = 'flex';
+
+    if (!hasMoreHistory) {
+      // 没有更多消息
+      btn.classList.add('no-more');
+      btn.disabled = true;
+      if (textEl) textEl.textContent = '没有更多历史消息';
+      if (spinnerEl) spinnerEl.style.display = 'none';
+    } else if (isLoadingMore) {
+      // 正在加载
+      btn.classList.remove('no-more');
+      btn.disabled = true;
+      if (textEl) textEl.textContent = '加载中...';
+      if (spinnerEl) spinnerEl.style.display = 'inline';
+    } else {
+      // 可以加载更多
+      btn.classList.remove('no-more');
+      btn.disabled = false;
+      if (textEl) textEl.textContent = '加载更早的消息';
+      if (spinnerEl) spinnerEl.style.display = 'none';
+    }
+  }
+
+  /**
+   * 加载更多历史消息（公开方法）
+   */
+  function loadMoreChatHistory() {
+    if (hasMoreHistory && !isLoadingMore) {
+      loadChatHistory(true);
     }
   }
 
@@ -815,11 +1229,17 @@
     }
   };
 
+  // 全局过滤切换函数（供 HTML onclick 调用）
+  window.toggleMessageFilter = function(type) {
+    MessageFilter.toggle(type);
+  };
+
   // 暴露 YooAI 命名空间
   window.YooAI = {
     init,
     onEvent: window.onEvent,
     loadChatHistory,
+    loadMoreChatHistory,
     loadTimelineHistory
   };
 

@@ -633,6 +633,92 @@ const Chat = (function() {
     return [...messages];
   }
 
+  /**
+   * Prepend a message to the top of the container
+   * Used for loading more history
+   * @param {Object} msg - Message object { role, content, timestamp }
+   */
+  function prependMessage(msg) {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+
+    // Remove empty state if present
+    const emptyState = container.querySelector('.empty-state');
+    if (emptyState) emptyState.remove();
+
+    const role = msg.role || 'user';
+    const content = msg.content || '';
+    const timestamp = msg.timestamp || Date.now();
+
+    // Create message element
+    const messageEl = document.createElement('div');
+    messageEl.className = `message ${role}`;
+    messageEl.dataset.timestamp = timestamp;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+
+    const contentEl = document.createElement('div');
+    contentEl.className = 'message-content';
+
+    // Render content using existing renderContent function
+    if (typeof renderContent === 'function') {
+      renderContent(content, contentEl);
+    } else {
+      // Fallback: sanitize and render
+      const textContent = typeof marked !== 'undefined'
+        ? marked.parse(String(content))
+        : String(content);
+      contentEl.innerHTML = typeof DOMPurify !== 'undefined'
+        ? DOMPurify.sanitize(textContent)
+        : textContent;
+    }
+
+    bubble.appendChild(contentEl);
+    messageEl.appendChild(bubble);
+
+    // Check for date divider
+    const firstChild = container.firstElementChild;
+    if (firstChild && typeof ChatMessageUtils !== 'undefined') {
+      const firstMsgTime = firstChild.dataset?.timestamp
+        ? parseInt(firstChild.dataset.timestamp)
+        : timestamp;
+
+      if (ChatMessageUtils.getDateDividerIfNeeded([{ timestamp: firstMsgTime }], msg)) {
+        const divider = ChatMessageUtils.createDateDivider(timestamp);
+        container.insertBefore(divider, firstChild);
+      }
+    }
+
+    // Insert at the top
+    container.insertBefore(messageEl, container.firstChild);
+
+    // Add to messages array at the beginning
+    messages.unshift({
+      role,
+      content,
+      timestamp,
+      element: messageEl
+    });
+  }
+
+  /**
+   * Prepend an element to the top of the container
+   * Used for loading more history with tool cards
+   * @param {HTMLElement} element - Element to prepend
+   */
+  function prependElement(element) {
+    const container = document.getElementById('messagesContainer');
+    if (!container || !element) return;
+
+    // Remove empty state if present
+    const emptyState = container.querySelector('.empty-state');
+    if (emptyState) emptyState.remove();
+
+    // Insert at the top
+    container.insertBefore(element, container.firstChild);
+  }
+
   // Public API
   return {
     init,
@@ -641,6 +727,8 @@ const Chat = (function() {
     appendToolCall,
     appendToolResult,
     appendElement,
+    prependMessage,
+    prependElement,
     endStream,
     showTyping,
     hideTyping,

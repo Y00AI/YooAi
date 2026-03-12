@@ -394,12 +394,20 @@ const Chat = (function() {
       ChatStream.clear();
     }
 
-    // 清空容器
+    // 清空容器，但保留 loadMoreWrapper
     const container = document.getElementById('messagesContainer');
     if (container) {
-      // 使用textContent安全清空
+      // 保存 loadMoreWrapper 元素
+      const loadMoreWrapper = document.getElementById('loadMoreWrapper');
+
+      // 清空所有子元素
       while (container.firstChild) {
         container.removeChild(container.firstChild);
+      }
+
+      // 重新添加 loadMoreWrapper（如果存在）
+      if (loadMoreWrapper) {
+        container.appendChild(loadMoreWrapper);
       }
     }
 

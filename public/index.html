@@ -230,7 +230,30 @@
             </div>
           </div>
         </div>
+        <!-- 消息过滤选项 -->
+        <div class="chat-filter-bar">
+          <span class="filter-label">显示:</span>
+          <label class="filter-checkbox">
+            <input type="checkbox" id="filterThinking" onchange="toggleMessageFilter('thinking')">
+            <span>思考过程</span>
+          </label>
+          <label class="filter-checkbox">
+            <input type="checkbox" id="filterToolCalls" onchange="toggleMessageFilter('toolCalls')">
+            <span>工具调用</span>
+          </label>
+          <label class="filter-checkbox">
+            <input type="checkbox" id="filterToolResults" onchange="toggleMessageFilter('toolResults')">
+            <span>工具结果</span>
+          </label>
+        </div>
         <div id="messagesContainer" class="messages-container">
+          <!-- 加载更多按钮 -->
+          <div id="loadMoreWrapper" class="load-more-wrapper" style="display: none;">
+            <button id="loadMoreBtn" class="load-more-btn">
+              <span class="load-more-text">加载更早的消息</span>
+              <span class="load-more-spinner" style="display: none;">⏳</span>
+            </button>
+          </div>
           <div class="chat-empty">
             <div class="chat-empty-icon">💬</div>
             <div class="chat-empty-title">开始对话</div>

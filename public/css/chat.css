@@ -339,6 +339,63 @@
   background: rgba(160, 240, 240, 0.08);
 }
 
+/* === LOAD MORE BUTTON === */
+.load-more-wrapper {
+  display: flex;
+  justify-content: center;
+  padding: 16px 12px 8px;
+}
+
+.load-more-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: rgba(160, 240, 240, 0.1);
+  border: 1px solid rgba(160, 240, 240, 0.3);
+  border-radius: 20px;
+  color: #a0f0f0;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.load-more-btn:hover {
+  background: rgba(160, 240, 240, 0.2);
+  border-color: rgba(160, 240, 240, 0.5);
+  transform: translateY(-1px);
+}
+
+.load-more-btn:active {
+  transform: translateY(0);
+}
+
+.load-more-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.load-more-btn .load-more-spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+.load-more-btn.no-more {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.4);
+  cursor: default;
+}
+
+.load-more-btn.no-more:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* === STREAMING INDICATOR === */
 .message.streaming .message-bubble::after {
   content: '▌';
@@ -1356,4 +1413,44 @@
   0% { transform: scale(0); }
   50% { transform: scale(1.2); }
   100% { transform: scale(1); }
+}
+
+/* === 消息过滤栏 === */
+.chat-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+}
+
+.filter-label {
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 600;
+}
+
+.filter-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.6);
+  transition: color 0.2s;
+}
+
+.filter-checkbox:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.filter-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #a0f0f0;
+  cursor: pointer;
+}
+
+.filter-checkbox span {
+  user-select: none;
 }
